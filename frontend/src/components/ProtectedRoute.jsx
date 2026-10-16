@@ -3,16 +3,19 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 export default function ProtectedRoute({ children, roles }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
-  if (!localStorage.getItem("token")) {
-    return <Navigate to="/login" replace />;
+  // Wait until saved login information has been checked
+  if (loading) {
+    return <p>Checking login...</p>;
   }
 
+  // Redirect if the user is not logged in
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
+  // Restrict access based on role
   if (roles && !roles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }

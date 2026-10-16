@@ -13,6 +13,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -22,11 +23,11 @@ export default function Login() {
       const user = await login(email, password);
 
       if (user.role === "ADMIN") {
-        navigate("/admin");
+        navigate("/admin", { replace: true });
       } else if (user.role === "HR") {
-        navigate("/hr");
+        navigate("/hr", { replace: true });
       } else {
-        navigate("/employee");
+        navigate("/employee", { replace: true });
       }
     } catch (err) {
       localStorage.removeItem("token");
@@ -35,6 +36,7 @@ export default function Login() {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="auth-page">

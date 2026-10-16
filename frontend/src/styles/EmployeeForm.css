@@ -1,0 +1,151 @@
+
+.employee-form-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px;
+  color: #1f2937;
+}
+
+.employee-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.employee-form-header h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.employee-form-header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.employee-form-back,
+.employee-form-cancel,
+.employee-form-submit {
+  padding: 11px 16px;
+  border: none;
+  border-radius: 7px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.employee-form-back,
+.employee-form-cancel {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.employee-form {
+  padding: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 4%);
+}
+
+.employee-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.employee-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.employee-form-field label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.employee-form-field input,
+.employee-form-field select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: white;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.employee-form-field input:focus,
+.employee-form-field select:focus {
+  outline: 2px solid #bfdbfe;
+  border-color: #2563eb;
+}
+
+.employee-form-field small {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.employee-form-error {
+  margin-bottom: 20px;
+  padding: 12px;
+  border-radius: 7px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 14px;
+}
+
+.employee-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.employee-form-submit {
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+}
+
+.employee-form-submit:hover {
+  background: #1d4ed8;
+}
+
+.employee-form-submit:disabled,
+.employee-form-cancel:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 600px) {
+  .employee-form-page {
+    padding: 18px;
+  }
+
+  .employee-form-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .employee-form {
+    padding: 18px;
+  }
+
+  .employee-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .employee-form-actions button {
+    width: 100%;
+  }
+}
