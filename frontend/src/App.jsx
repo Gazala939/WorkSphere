@@ -19,6 +19,12 @@ import ManageLeaves from "./pages/ManageLeaves";
 import PayrollDashboard from "./pages/PayrollDashboard";
 import SalaryDetails from "./pages/SalaryDetails";
 
+import MyProfile from "./pages/MyProfile";
+
+import LeaveBalance from "./pages/LeaveBalance";
+
+import UserManagement from "./pages/UserManagement";
+
 
 function DashboardRedirect() {
   const { user } = useAuth();
@@ -65,6 +71,15 @@ function AppRoutes() {
       />
 
       <Route
+        path="/my-profile"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE"]}>
+            <MyProfile />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/attendance"
         element={
           <ProtectedRoute roles={["EMPLOYEE"]}>
@@ -96,6 +111,16 @@ function AppRoutes() {
         element={
           <ProtectedRoute roles={["ADMIN"]}>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      
+
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute roles={["ADMIN"]}>
+            <UserManagement />
           </ProtectedRoute>
         }
       />
@@ -143,6 +168,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute roles={["EMPLOYEE"]}>
             <LeaveHistory />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/leave-balance"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE"]}>
+            <LeaveBalance />
           </ProtectedRoute>
         }
       />

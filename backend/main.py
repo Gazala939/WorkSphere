@@ -9,8 +9,19 @@ from sqlalchemy import or_, func
 
 from sqlalchemy.exc import IntegrityError
 
-from database import Base, engine, get_db
-from models import User, Employee, Attendance, Leave, Payroll,Notification
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from database import Base,SessionLocal, engine, get_db
+from models import (
+    User,
+    Employee,
+    Attendance,
+    Leave,
+    Payroll,
+    Notification,
+    LeavePolicy,
+    LeaveBalance,
+)
 from schemas import (
     RegisterRequest,
     LoginRequest,
@@ -27,6 +38,13 @@ from schemas import (
     LeaveResponse,
     PayrollCreate,
     PayrollResponse,
+    LeavePolicyCreate,
+    LeavePolicyResponse,
+    LeaveBalanceCreate,
+    LeaveBalanceResponse,
+    AdminUserCreate,
+    AdminUserUpdate,
+    UserStatusUpdate,
 )
 from security import (
     hash_password,
@@ -59,7 +77,29 @@ def create_notification(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    yield
+
+    scheduler = BackgroundScheduler(
+        timezone=INDIA_TIMEZONE
+    )
+
+    scheduler.add_job(
+        run_daily_absence_check,
+        trigger="cron",
+        day_of_week="mon-fri",
+        hour=18,
+        minute=45,
+        id="daily_absence_check",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+
+    try:
+        yield
+    finally:
+        scheduler.shutdown(wait=False)
+
+
 
 
 app = FastAPI(
@@ -124,6 +164,7 @@ def register(
     return user
 
 
+
 @app.post("/auth/login", response_model=TokenResponse)
 def login(
     data: LoginRequest,
@@ -133,6 +174,7 @@ def login(
 
     user = db.query(User).filter(User.email == email).first()
 
+    # Step 1: Check credentials
     if not user or not verify_password(
         data.password,
         user.hashed_password
@@ -143,6 +185,14 @@ def login(
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+    # Step 2: Check whether the account is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated. Contact the administrator."
+        )
+
+    # Step 3: Generate JWT only for active users
     token = create_access_token(user.id, user.role)
 
     return {
@@ -219,6 +269,205 @@ def update_user_role(
     db.refresh(user)
 
     return user
+
+
+
+# ==========================================================
+# ADMIN USER MANAGEMENT
+# ==========================================================
+
+@app.post(
+    "/admin/users",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def admin_create_user(
+    data: AdminUserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    username = data.username.strip()
+    email = str(data.email).strip().lower()
+
+    if not username:
+        raise HTTPException(status_code=422, detail="Username cannot be empty")
+
+    existing = db.query(User).filter(
+        or_(User.username == username, User.email == email)
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Username or email already exists"
+        )
+
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=hash_password(data.password),
+        role=data.role,
+        is_active=True
+    )
+
+    db.add(user)
+
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Username or email already exists"
+        )
+
+    return user
+
+
+@app.patch(
+    "/admin/users/{user_id}",
+    response_model=UserResponse
+)
+def admin_update_user(
+    user_id: int,
+    data: AdminUserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updates = data.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide at least one field to update"
+        )
+
+    if "username" in updates:
+        if updates["username"] is None:
+            raise HTTPException(status_code=422, detail="Username cannot be null")
+
+        updates["username"] = updates["username"].strip()
+
+        if not updates["username"]:
+            raise HTTPException(status_code=422, detail="Username cannot be empty")
+
+    if "email" in updates and updates["email"] is not None:
+        updates["email"] = str(updates["email"]).strip().lower()
+
+    for field in ("username", "email"):
+        if field in updates and updates[field] is not None:
+            duplicate = db.query(User).filter(
+                getattr(User, field) == updates[field],
+                User.id != user_id
+            ).first()
+
+            if duplicate:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{field.capitalize()} already exists"
+                )
+
+    # Prevent an administrator from deactivating their own account
+    # through this endpoint.
+    if (
+        user.id == current_user.id
+        and updates.get("is_active") is False
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot deactivate your own account"
+        )
+
+    for field, value in updates.items():
+        setattr(user, field, value)
+
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Username or email already exists"
+        )
+
+    return user
+
+
+@app.patch(
+    "/admin/users/{user_id}/status",
+    response_model=UserResponse
+)
+def admin_update_user_status(
+    user_id: int,
+    data: UserStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.id == current_user.id and not data.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot deactivate your own account"
+        )
+
+    user.is_active = data.is_active
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+@app.delete(
+    "/admin/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def admin_delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot delete your own account"
+        )
+
+    # Employee profiles and their related HR records must be preserved.
+    employee = db.query(Employee).filter(
+        Employee.user_id == user_id
+    ).first()
+
+    if employee:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete this user because an employee profile is linked. Deactivate the account instead."
+        )
+
+    # Remove notifications before deleting the user.
+    db.query(Notification).filter(
+        Notification.user_id == user_id
+    ).delete(synchronize_session=False)
+
+    db.delete(user)
+    db.commit()
+
+    return None
 
 
 
@@ -488,6 +737,78 @@ def update_employee(
 
 # MODULE 3: ATTENDANCE MANAGEMENT
 
+
+def mark_absent_employees(
+    db: Session,
+    attendance_date: date,
+):
+    """Create ABSENT attendance records for eligible employees."""
+
+    # Do not mark weekends as absent.
+    if attendance_date.weekday() >= 5:
+        return 0
+
+    employees = db.query(Employee).filter(
+        Employee.status == "ACTIVE",
+        Employee.joining_date <= attendance_date,
+    ).all()
+
+    absent_count = 0
+
+    try:
+        for employee in employees:
+            existing_attendance = db.query(Attendance).filter(
+                Attendance.employee_id == employee.id,
+                Attendance.date == attendance_date,
+            ).first()
+
+            if existing_attendance:
+                continue
+
+            absent_record = Attendance(
+                employee_id=employee.id,
+                date=attendance_date,
+                check_in=None,
+                check_out=None,
+                status="ABSENT",
+            )
+
+            db.add(absent_record)
+            absent_count += 1
+
+        db.commit()
+        return absent_count
+
+    except Exception:
+        db.rollback()
+        raise
+    
+
+    
+
+def run_daily_absence_check():
+    today = datetime.now(INDIA_TIMEZONE).date()
+
+    # Process the previous working day.
+    attendance_date = today - timedelta(days=1)
+
+    while attendance_date.weekday() >= 5:
+        attendance_date -= timedelta(days=1)
+
+    db = SessionLocal()
+
+    try:
+        count = mark_absent_employees(db, attendance_date)
+        print(
+            f"Automatic absence check completed for {attendance_date}. "
+            f"New absent records: {count}"
+        )
+    except Exception as error:
+        print(f"Automatic absence check failed: {error}")
+    finally:
+        db.close()
+
+
 def make_utc_aware(value: datetime) -> datetime:
     """Treat SQLite's naive datetime values as UTC."""
     if value.tzinfo is None:
@@ -507,6 +828,25 @@ def build_attendance_response(attendance: Attendance):
 
         duration = check_out_time - check_in_time
         working_hours = round(duration.total_seconds() / 3600, 2)
+        
+    
+    is_late = False
+    overtime_hours = None
+
+    if attendance.check_in and attendance.check_out:
+        overtime_hours = round(max(working_hours - 8, 0), 2)
+    
+
+    if attendance.check_in:
+        check_in_utc = make_utc_aware(attendance.check_in)
+        check_in_india = check_in_utc.astimezone(INDIA_TIMEZONE)
+
+        official_check_in = time(9, 30)
+
+        is_late = check_in_india.time().replace(
+            tzinfo=None
+        ) > official_check_in
+
 
     return {
         "id": attendance.id,
@@ -516,6 +856,8 @@ def build_attendance_response(attendance: Attendance):
         "date": attendance.date,
         "status": attendance.status,
         "working_hours": working_hours,
+        "is_late": is_late,
+        "overtime_hours": overtime_hours,
     }
 
 
@@ -799,6 +1141,7 @@ def list_all_leaves(
     return query.order_by(Leave.id.desc()).all()
 
 
+
 # HR/ADMIN: APPROVE OR REJECT LEAVE
 @app.patch(
     "/leaves/{leave_id}/decision",
@@ -810,6 +1153,7 @@ def decide_leave(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("HR", "ADMIN"))
 ):
+    # 1. Find the leave request
     leave = db.query(Leave).filter(
         Leave.id == leave_id
     ).first()
@@ -820,20 +1164,72 @@ def decide_leave(
             detail="Leave request not found"
         )
 
-    # Only pending requests can be decided
+    # 2. Only pending requests can be decided
     if leave.status != "PENDING":
         raise HTTPException(
             status_code=409,
             detail="This leave request has already been reviewed"
         )
 
-    leave.status = data.status
+    # 3. Accept only APPROVED or REJECTED
+    if data.status not in ["APPROVED", "REJECTED"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Status must be APPROVED or REJECTED"
+        )
 
-    # Find the employee who applied for this leave
+    # 4. Find the employee
     employee = db.query(Employee).filter(
         Employee.id == leave.employee_id
     ).first()
 
+    # 5. Deduct balance only when approving
+    if data.status == "APPROVED":
+
+        # Calculate inclusive calendar days
+        requested_days = (
+            leave.end_date - leave.start_date
+        ).days + 1
+
+        if requested_days <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Leave end date must not be before start date"
+            )
+
+        # Find this employee's balance for this leave type
+        balance = db.query(LeaveBalance).filter(
+            LeaveBalance.employee_id == leave.employee_id,
+            LeaveBalance.leave_type == leave.leave_type
+        ).first()
+
+        if not balance:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No {leave.leave_type} leave balance exists "
+                    "for this employee"
+                )
+            )
+
+        # Prevent over-usage
+        if balance.remaining_days < requested_days:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Insufficient {leave.leave_type} leave balance. "
+                    f"Available: {balance.remaining_days} days; "
+                    f"Requested: {requested_days} days."
+                )
+            )
+
+        # Deduct the approved leave days
+        balance.remaining_days -= requested_days
+
+    # 6. Update the leave status
+    leave.status = data.status
+
+    # 7. Notify the employee
     if employee:
         create_notification(
             db=db,
@@ -846,10 +1242,210 @@ def decide_leave(
             ),
         )
 
-    db.commit()
-    db.refresh(leave)
+    # 8. Save the balance, decision and notification together
+    try:
+        db.commit()
+        db.refresh(leave)
+    except Exception:
+        db.rollback()
+        raise
 
     return leave
+
+
+
+# ==========================================================
+# MODULE 11: LEAVE POLICIES AND LEAVE BALANCES
+# ==========================================================
+
+# HR/ADMIN: CREATE A LEAVE POLICY
+@app.post(
+    "/leave-policies",
+    response_model=LeavePolicyResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def create_leave_policy(
+    data: LeavePolicyCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    leave_type = data.leave_type.strip().upper()
+
+    if leave_type not in ["SICK", "CASUAL", "PAID"]:
+        raise HTTPException(
+            status_code=422,
+            detail="Leave type must be SICK, CASUAL, or PAID"
+        )
+
+    existing_policy = db.query(LeavePolicy).filter(
+        LeavePolicy.leave_type == leave_type
+    ).first()
+
+    if existing_policy:
+        raise HTTPException(
+            status_code=409,
+            detail="Policy already exists for this leave type"
+        )
+
+    policy = LeavePolicy(
+        leave_type=leave_type,
+        total_days_allowed=data.total_days_allowed
+    )
+
+    db.add(policy)
+    db.commit()
+    db.refresh(policy)
+
+    return policy
+
+
+# HR/ADMIN: VIEW ALL LEAVE POLICIES
+@app.get(
+    "/leave-policies",
+    response_model=list[LeavePolicyResponse]
+)
+def list_leave_policies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    return db.query(LeavePolicy).order_by(
+        LeavePolicy.id
+    ).all()
+
+
+# HR/ADMIN: CREATE AN EMPLOYEE LEAVE BALANCE
+@app.post(
+    "/leave-balances",
+    response_model=LeaveBalanceResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def create_leave_balance(
+    data: LeaveBalanceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    leave_type = data.leave_type.strip().upper()
+
+    if leave_type not in ["SICK", "CASUAL", "PAID"]:
+        raise HTTPException(
+            status_code=422,
+            detail="Leave type must be SICK, CASUAL, or PAID"
+        )
+
+    employee = db.query(Employee).filter(
+        Employee.id == data.employee_id
+    ).first()
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+
+    policy = db.query(LeavePolicy).filter(
+        LeavePolicy.leave_type == leave_type
+    ).first()
+
+    if not policy:
+        raise HTTPException(
+            status_code=400,
+            detail="Create a leave policy for this leave type first"
+        )
+
+    existing_balance = db.query(LeaveBalance).filter(
+        LeaveBalance.employee_id == data.employee_id,
+        LeaveBalance.leave_type == leave_type
+    ).first()
+
+    if existing_balance:
+        raise HTTPException(
+            status_code=409,
+            detail="Leave balance already exists for this employee and leave type"
+        )
+
+    if data.remaining_days > policy.total_days_allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Remaining days cannot exceed the policy limit of "
+                f"{policy.total_days_allowed}"
+            )
+        )
+
+    balance = LeaveBalance(
+        employee_id=data.employee_id,
+        leave_type=leave_type,
+        remaining_days=data.remaining_days
+    )
+
+    db.add(balance)
+    db.commit()
+    db.refresh(balance)
+
+    return balance
+
+
+# EMPLOYEE: VIEW LEAVE POLICIES
+@app.get(
+    "/leave-policies/overview",
+    response_model=list[LeavePolicyResponse]
+)
+def get_leave_policy_overview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(LeavePolicy).order_by(
+        LeavePolicy.id
+    ).all()
+
+
+# EMPLOYEE: VIEW OWN LEAVE BALANCES
+@app.get(
+    "/leave-balances/me",
+    response_model=list[LeaveBalanceResponse]
+)
+def get_my_leave_balances(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE"))
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found for this account"
+        )
+
+    return db.query(LeaveBalance).filter(
+        LeaveBalance.employee_id == employee.id
+    ).order_by(
+        LeaveBalance.id
+    ).all()
+
+
+# HR/ADMIN: VIEW EMPLOYEE LEAVE BALANCES
+@app.get(
+    "/leave-balances",
+    response_model=list[LeaveBalanceResponse]
+)
+def list_leave_balances(
+    employee_id: int | None = Query(default=None, gt=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    query = db.query(LeaveBalance)
+
+    if employee_id is not None:
+        query = query.filter(
+            LeaveBalance.employee_id == employee_id
+        )
+
+    return query.order_by(
+        LeaveBalance.employee_id,
+        LeaveBalance.leave_type
+    ).all()
 
 
 # ==========================================================
@@ -891,19 +1487,26 @@ def generate_payroll(
 
     net_salary = (
         data.basic_salary
+        + data.allowances
         + data.bonus
         - data.deductions
     )
 
+    
     if net_salary < 0:
         raise HTTPException(
             status_code=422,
-            detail="Deductions cannot exceed basic salary plus bonus"
+            detail=(
+                "Deductions cannot exceed basic salary, "
+                "allowances, and bonus"
+            )
         )
+
 
     payroll = Payroll(
         employee_id=data.employee_id,
         basic_salary=data.basic_salary,
+        allowances=data.allowances,
         deductions=data.deductions,
         bonus=data.bonus,
         net_salary=net_salary,
@@ -926,6 +1529,50 @@ def generate_payroll(
     db.refresh(payroll)
 
     return payroll
+
+
+# MODULE 12: MONTHLY PAYROLL SUMMARY
+
+@app.get("/payroll/summary")
+def payroll_summary(
+    month: str = Query(
+        ...,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$"
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    summary = db.query(
+        func.count(Payroll.id).label("total_records"),
+        func.coalesce(
+            func.sum(Payroll.basic_salary), 0
+        ).label("total_basic_salary"),
+        func.coalesce(
+            func.sum(Payroll.allowances), 0
+        ).label("total_allowances"),
+        func.coalesce(
+            func.sum(Payroll.bonus), 0
+        ).label("total_bonus"),
+        func.coalesce(
+            func.sum(Payroll.deductions), 0
+        ).label("total_deductions"),
+        func.coalesce(
+            func.sum(Payroll.net_salary), 0
+        ).label("total_net_salary")
+    ).filter(
+        Payroll.month == month
+    ).first()
+
+    return {
+        "month": month,
+        "total_records": summary.total_records,
+        "total_basic_salary": float(summary.total_basic_salary),
+        "total_allowances": float(summary.total_allowances),
+        "total_bonus": float(summary.total_bonus),
+        "total_deductions": float(summary.total_deductions),
+        "total_net_salary": float(summary.total_net_salary)
+    }
+
 
 # View all payroll records - HR and Admin only
 @app.get(
@@ -999,7 +1646,7 @@ def employee_payroll(
 @app.get("/analytics/dashboard")
 def dashboard_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("HR", "ADMIN"))
+    current_user: User = Depends(require_role("ADMIN"))
 ):
     # 1. Total employees
     total_employees = db.query(

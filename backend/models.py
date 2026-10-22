@@ -15,6 +15,8 @@ from sqlalchemy import(
 from database import Base
 
 # USER
+
+# USER
 class User(Base):
     __tablename__ = "users"
 
@@ -22,12 +24,18 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
+
     role = Column(String(20), default="EMPLOYEE", nullable=False)
+
+    # Admin can activate or deactivate a user account
+    is_active = Column(Boolean, default=True, nullable=False)
+
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
+
 #  EMPLOYEE
 class Employee(Base):
     __tablename__ = "employees"
@@ -104,6 +112,37 @@ class Leave(Base):
         nullable=False,
         default="PENDING"
     )  # PENDING / APPROVED / REJECTED
+    
+
+
+# LEAVE POLICY
+class LeavePolicy(Base):
+    __tablename__ = "leave_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    leave_type = Column(String(20), nullable=False, unique=True)
+
+    total_days_allowed = Column(Integer, nullable=False, default=0)
+
+
+# EMPLOYEE LEAVE BALANCE
+class LeaveBalance(Base):
+    __tablename__ = "leave_balances"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True
+    )
+
+    leave_type = Column(String(20), nullable=False)
+
+    remaining_days = Column(Integer, nullable=False, default=0)
+
 
 
 # ==========================================================
@@ -123,6 +162,7 @@ class Payroll(Base):
     )
 
     basic_salary = Column(Float, nullable=False)
+    allowances = Column(Float, nullable=False, default=0)
     deductions = Column(Float, nullable=False, default=0)
     bonus = Column(Float, nullable=False, default=0)
     net_salary = Column(Float, nullable=False)

@@ -1,0 +1,111 @@
+
+.leave-page {
+  padding: 28px;
+  color: #1f2937;
+}
+
+.leave-page-header {
+  margin-bottom: 28px;
+}
+
+.leave-page-header h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.leave-page-header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.leave-section {
+  margin-bottom: 32px;
+}
+
+.leave-section h2 {
+  margin-bottom: 16px;
+  font-size: 20px;
+}
+
+.leave-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+}
+
+.leave-card {
+  padding: 22px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+}
+
+.leave-type {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.leave-card h3 {
+  margin: 12px 0 4px;
+  font-size: 32px;
+}
+
+.leave-card > p:last-child {
+  margin-bottom: 0;
+  color: #6b7280;
+}
+
+.leave-table-wrapper {
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.leave-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.leave-table th,
+.leave-table td {
+  padding: 15px 18px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.leave-table th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.leave-table tr:last-child td {
+  border-bottom: none;
+}
+
+.leave-empty {
+  padding: 18px;
+  background: #f9fafb;
+  border-radius: 8px;
+  color: #6b7280;
+}
+
+.leave-error {
+  margin-bottom: 20px;
+  padding: 14px;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 8px;
+}
+
+@media (max-width: 600px) {
+  .leave-page {
+    padding: 16px;
+  }
+
+  .leave-page-header h1 {
+    font-size: 23px;
+  }
+}

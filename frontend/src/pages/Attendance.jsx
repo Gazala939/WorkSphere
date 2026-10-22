@@ -92,6 +92,26 @@ function Attendance() {
     return `attendance-status ${status?.toLowerCase() || ""}`;
   }
 
+  function getPunctualityLabel(record) {
+    if (record.status === "ABSENT") {
+      return "Absent";
+    }
+
+    if (!record.check_in) {
+      return "Not checked in";
+    }
+
+    return record.is_late ? "Late" : "On-time";
+  }
+
+  function getPunctualityClass(record) {
+    const label = getPunctualityLabel(record);
+
+    return `attendance-punctuality ${label
+      .toLowerCase()
+      .replaceAll(" ", "-")}`;
+  }
+
   if (loading) {
     return <div className="attendance-page">Loading attendance...</div>;
   }
@@ -117,6 +137,24 @@ function Attendance() {
       {error && <div className="attendance-alert error">{error}</div>}
       {message && (
         <div className="attendance-alert success">{message}</div>
+      )}
+
+      {todayRecord?.status === "ABSENT" && !checkedIn && (
+        <div className="attendance-alert warning">
+          You are marked absent for today. Please contact HR if this is incorrect.
+        </div>
+      )}
+
+      {checkedIn && todayRecord?.is_late === true && (
+        <div className="attendance-alert warning">
+          Your check-in was late. Official start time is 9:30 AM.
+        </div>
+      )}
+
+      {checkedIn && todayRecord?.is_late === false && (
+        <div className="attendance-alert success">
+          You checked in on time. Have a productive day!
+        </div>
       )}
 
       <section className="attendance-summary">
@@ -210,6 +248,7 @@ function Attendance() {
                   <th>Check Out</th>
                   <th>Working Hours</th>
                   <th>Status</th>
+                  <th>Arrival</th>
                 </tr>
               </thead>
 
@@ -220,13 +259,21 @@ function Attendance() {
                     <td>{formatTime(record.check_in)}</td>
                     <td>{formatTime(record.check_out)}</td>
                     <td>
-                      {record.working_hours != null
+                      {record.status === "ABSENT"
+                      ? "—"
+                      : record.working_hours != null
                         ? `${record.working_hours.toFixed(2)} hrs`
                         : "In progress"}
                     </td>
                     <td>
                       <span className={getStatusClass(record.status)}>
                         {record.status}
+                      </span>
+                    </td>
+
+                    <td>
+                      <span className={getPunctualityClass(record)}>
+                        {getPunctualityLabel(record)}
                       </span>
                     </td>
                   </tr>

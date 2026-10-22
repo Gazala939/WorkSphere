@@ -11,9 +11,17 @@ export default function PayrollDashboard() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  const [summaryMonth, setSummaryMonth] = useState(
+    new Date().toISOString().slice(0, 7)
+  );
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+
   const [form, setForm] = useState({
     employee_id: "",
     basic_salary: "",
+    allowances: "0",
     deductions: "0",
     bonus: "0",
     month: new Date().toISOString().slice(0, 7),
@@ -21,6 +29,7 @@ export default function PayrollDashboard() {
 
   const netSalary =
     Number(form.basic_salary || 0) +
+    Number(form.allowances || 0) +
     Number(form.bonus || 0) -
     Number(form.deductions || 0);
 
@@ -38,19 +47,45 @@ export default function PayrollDashboard() {
       setEmployees(employeeResponse.data);
     } catch (err) {
       setError(
-        err.response?.data?.detail || "Unable to load payroll information."
+        err.response?.data?.detail ||
+          "Unable to load payroll information."
       );
     } finally {
       setLoading(false);
     }
   }
 
+  async function loadSummary(month = summaryMonth) {
+    setSummaryLoading(true);
+    setSummaryError("");
+
+    try {
+      const response = await api.get("/payroll/summary", {
+        params: { month },
+      });
+
+      setSummary(response.data);
+    } catch (err) {
+      setSummaryError(
+        err.response?.data?.detail ||
+          "Unable to load monthly payroll summary."
+      );
+      setSummary(null);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadData();
+    loadSummary();
   }, []);
 
   function handleChange(e) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
   }
 
   async function handleSubmit(e) {
@@ -59,7 +94,9 @@ export default function PayrollDashboard() {
     setMessage("");
 
     if (netSalary < 0) {
-      setError("Deductions cannot exceed basic salary plus bonus.");
+      setError(
+        "Deductions cannot exceed basic salary, allowances, and bonus."
+      );
       return;
     }
 
@@ -69,6 +106,7 @@ export default function PayrollDashboard() {
       await api.post("/payroll", {
         employee_id: Number(form.employee_id),
         basic_salary: Number(form.basic_salary),
+        allowances: Number(form.allowances),
         deductions: Number(form.deductions),
         bonus: Number(form.bonus),
         month: form.month,
@@ -76,18 +114,26 @@ export default function PayrollDashboard() {
 
       setMessage("Payroll generated successfully!");
 
+      const generatedMonth = form.month;
+
       setForm({
         employee_id: "",
         basic_salary: "",
+        allowances: "0",
         deductions: "0",
         bonus: "0",
         month: new Date().toISOString().slice(0, 7),
       });
 
       await loadData();
+
+      if (generatedMonth === summaryMonth) {
+        await loadSummary(summaryMonth);
+      }
     } catch (err) {
       setError(
-        err.response?.data?.detail || "Unable to generate payroll."
+        err.response?.data?.detail ||
+          "Unable to generate payroll."
       );
     } finally {
       setSaving(false);
@@ -95,7 +141,7 @@ export default function PayrollDashboard() {
   }
 
   function money(value) {
-    return Number(value).toLocaleString("en-IN", {
+    return Number(value || 0).toLocaleString("en-IN", {
       style: "currency",
       currency: "INR",
       maximumFractionDigits: 2,
@@ -112,18 +158,88 @@ export default function PayrollDashboard() {
         </div>
       </header>
 
+      <section className="payroll-panel">
+        <h2>Monthly Payroll Summary</h2>
+        <p>Review salary totals for a selected month.</p>
+
+        <div className="payroll-summary-controls">
+          <label>
+            Select Payroll Month
+            <input
+              type="month"
+              value={summaryMonth}
+              onChange={(e) => setSummaryMonth(e.target.value)}
+            />
+          </label>
+
+          <button
+            type="button"
+            disabled={summaryLoading}
+            onClick={() => loadSummary(summaryMonth)}
+          >
+            {summaryLoading ? "Loading..." : "View Summary"}
+          </button>
+        </div>
+
+        {summaryError && (
+          <p className="payroll-error">{summaryError}</p>
+        )}
+
+        {summaryLoading && <p>Loading monthly summary...</p>}
+
+        {!summaryLoading && summary && (
+          <>
+            <p>
+              Summary for <strong>{summary.month}</strong>
+            </p>
+
+            <div className="payroll-stats">
+              <article className="payroll-stat">
+                <span>Total Payroll Records</span>
+                <strong>{summary.total_records}</strong>
+              </article>
+
+              <article className="payroll-stat">
+                <span>Total Basic Salary</span>
+                <strong>{money(summary.total_basic_salary)}</strong>
+              </article>
+
+              <article className="payroll-stat">
+                <span>Total Allowances</span>
+                <strong>{money(summary.total_allowances)}</strong>
+              </article>
+
+              <article className="payroll-stat">
+                <span>Total Bonus</span>
+                <strong>{money(summary.total_bonus)}</strong>
+              </article>
+
+              <article className="payroll-stat">
+                <span>Total Deductions</span>
+                <strong>{money(summary.total_deductions)}</strong>
+              </article>
+
+              <article className="payroll-stat">
+                <span>Total Net Salary</span>
+                <strong>{money(summary.total_net_salary)}</strong>
+              </article>
+            </div>
+          </>
+        )}
+      </section>
+
       <section className="payroll-stats">
         <article className="payroll-stat">
-          <span>Total payroll records</span>
+          <span>Total Payroll Records</span>
           <strong>{payrolls.length}</strong>
         </article>
 
         <article className="payroll-stat">
-          <span>Total net payroll</span>
+          <span>Total Net Payroll</span>
           <strong>
             {money(
               payrolls.reduce(
-                (total, item) => total + Number(item.net_salary),
+                (total, item) => total + Number(item.net_salary || 0),
                 0
               )
             )}
@@ -163,6 +279,19 @@ export default function PayrollDashboard() {
               min="0"
               step="0.01"
               value={form.basic_salary}
+              onChange={handleChange}
+              required
+            />
+          </label>
+
+          <label>
+            Allowances (₹)
+            <input
+              type="number"
+              name="allowances"
+              min="0"
+              step="0.01"
+              value={form.allowances}
               onChange={handleChange}
               required
             />
@@ -232,11 +361,13 @@ export default function PayrollDashboard() {
                   <th>Employee ID</th>
                   <th>Month</th>
                   <th>Basic Salary</th>
+                  <th>Allowances</th>
                   <th>Deductions</th>
                   <th>Bonus</th>
                   <th>Net Salary</th>
                 </tr>
               </thead>
+
               <tbody>
                 {payrolls.map((item) => (
                   <tr key={item.id}>
@@ -244,6 +375,7 @@ export default function PayrollDashboard() {
                     <td>{item.employee_id}</td>
                     <td>{item.month}</td>
                     <td>{money(item.basic_salary)}</td>
+                    <td>{money(item.allowances)}</td>
                     <td>{money(item.deductions)}</td>
                     <td>{money(item.bonus)}</td>
                     <td className="payroll-amount">

@@ -410,6 +410,28 @@ export default function Dashboard() {
         {isEmployee && (
           <>
             <section className="workspace-card">
+              <div className="attendance-icon">👤</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
+                <h2>My Profile</h2>
+                <p>
+                  View your personal details, employee information,
+                  department, designation, and joining date.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/my-profile")}
+                >
+                  View My Profile <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+            <section className="workspace-card">
               <div className="attendance-icon">◷</div>
 
               <div className="workspace-content">
@@ -459,6 +481,34 @@ export default function Dashboard() {
                 </div>
               </div>
             </section>
+
+            {/* Module 11: Leave Balance & Policies */}
+            <section className="workspace-card">
+              <div className="attendance-icon">📊</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">
+                  EMPLOYEE SERVICE
+                </span>
+
+                <h2>Leave Balance & Policies</h2>
+
+                <p>
+                  View your remaining casual, sick, and paid leave
+                  days and check company leave policies.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/leave-balance")}
+                >
+                  View Leave Balance <span>→</span>
+                </button>
+              </div>
+
+               <div className="workspace-decoration">W</div>
+            </section>
+
             <section className="workspace-card">
               <div className="attendance-icon">💰</div>
 
@@ -481,8 +531,38 @@ export default function Dashboard() {
               <div className="workspace-decoration">W</div>
             </section>
 
+            
+
           </>
         )}
+
+        
+        {isAdmin && (
+          <section className="workspace-card">
+            <div className="attendance-icon">🛡️</div>
+
+            <div className="workspace-content">
+              <span className="workspace-tag">ADMIN SERVICE</span>
+
+              <h2>User Management</h2>
+
+              <p>
+                Create user accounts, assign roles, edit user details,
+                and activate or deactivate accounts.
+              </p>
+
+              <button
+                className="attendance-btn"
+                onClick={() => navigate("/admin/users")}
+              >
+                Open User Management <span>→</span>
+              </button>
+            </div>
+
+            <div className="workspace-decoration">W</div>
+          </section>
+        )}
+
 
         {/* HR/Admin services */}
         {canManageLeaves && (

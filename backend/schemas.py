@@ -1,8 +1,8 @@
 
 from datetime import datetime,date,time
-from typing import Literal
+from typing import Literal, Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field,StringConstraints
 
 
 class RegisterRequest(BaseModel):
@@ -16,6 +16,7 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,7 +24,9 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     role: Literal["EMPLOYEE", "HR", "ADMIN"]
+    is_active: bool
     created_at: datetime
+
 
 
 class TokenResponse(BaseModel):
@@ -33,7 +36,22 @@ class TokenResponse(BaseModel):
 
 class RoleUpdateRequest(BaseModel):
     role: Literal["EMPLOYEE", "HR", "ADMIN"]
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    role: Literal["EMPLOYEE", "HR", "ADMIN"] = "EMPLOYEE"
 
+
+class AdminUserUpdate(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=50)
+    email: EmailStr | None = None
+    role: Literal["EMPLOYEE", "HR", "ADMIN"] | None = None
+    is_active: bool | None = None
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
 
 # Employee:
 
@@ -95,6 +113,8 @@ class AttendanceResponse(BaseModel):
     date: date
     status: Literal["PRESENT", "ABSENT", "HALF_DAY"]
     working_hours: float | None = None
+    is_late: bool = False
+    overtime_hours: float | None = None
 
 
 
@@ -127,10 +147,6 @@ class LeaveResponse(BaseModel):
 # MODULE 5: PAYROLL MANAGEMENT SCHEMAS
 # ==========================================================
 
-from datetime import date
-from typing import Annotated
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-
 
 MonthType = Annotated[
     str,
@@ -141,6 +157,7 @@ MonthType = Annotated[
 class PayrollCreate(BaseModel):
     employee_id: int = Field(gt=0)
     basic_salary: float = Field(ge=0)
+    allowances: float = Field(default=0, ge=0)
     deductions: float = Field(default=0, ge=0)
     bonus: float = Field(default=0, ge=0)
     month: MonthType
@@ -152,8 +169,41 @@ class PayrollResponse(BaseModel):
     id: int
     employee_id: int
     basic_salary: float
+    allowances: float
     deductions: float
     bonus: float
     net_salary: float
     month: str
     created_at: datetime
+
+
+# LEAVE POLICY SCHEMAS
+
+class LeavePolicyCreate(BaseModel):
+    leave_type: str
+    total_days_allowed: int = Field(ge=0)
+
+
+class LeavePolicyResponse(BaseModel):
+    id: int
+    leave_type: str
+    total_days_allowed: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# LEAVE BALANCE SCHEMAS
+
+class LeaveBalanceCreate(BaseModel):
+    employee_id: int
+    leave_type: str
+    remaining_days: int = Field(ge=0)
+
+
+class LeaveBalanceResponse(BaseModel):
+    id: int
+    employee_id: int
+    leave_type: str
+    remaining_days: int
+
+    model_config = ConfigDict(from_attributes=True)
