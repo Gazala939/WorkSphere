@@ -1,0 +1,110 @@
+
+.performance-page {
+  padding: 24px;
+}
+
+.performance-subtitle {
+  color: #64748b;
+  margin-bottom: 24px;
+}
+
+.performance-card {
+  background: white;
+  padding: 24px;
+  margin-bottom: 24px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.performance-card h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.performance-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 600px;
+}
+
+.performance-form label {
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.performance-form input,
+.performance-form select,
+.performance-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.performance-form textarea {
+  resize: vertical;
+}
+
+.performance-form button {
+  margin-top: 12px;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.performance-form button:hover {
+  background: #1d4ed8;
+}
+
+.performance-success {
+  color: #166534;
+  background: #dcfce7;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.performance-error {
+  color: #991b1b;
+  background: #fee2e2;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.performance-table-wrapper {
+  overflow-x: auto;
+}
+
+.performance-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.performance-table th,
+.performance-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.performance-table th {
+  background: #f8fafc;
+}
+
+@media (max-width: 600px) {
+  .performance-page {
+    padding: 12px;
+  }
+
+  .performance-card {
+    padding: 16px;
+  }
+}

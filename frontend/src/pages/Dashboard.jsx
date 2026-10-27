@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -14,12 +15,11 @@ export default function Dashboard() {
   const isEmployee = user?.role === "EMPLOYEE";
   const canManageLeaves = isAdmin || isHR;
 
-  
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState("");
 
-    // MODULE 7: Notifications
+  // MODULE 7: Notifications
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationLoading, setNotificationLoading] = useState(false);
@@ -38,8 +38,7 @@ export default function Dashboard() {
       setNotifications(response.data);
     } catch (error) {
       setNotificationError(
-        error.response?.data?.detail ||
-          "Unable to load notifications."
+        error.response?.data?.detail || "Unable to load notifications."
       );
     } finally {
       setNotificationLoading(false);
@@ -48,9 +47,7 @@ export default function Dashboard() {
 
   async function handleMarkAsRead(notificationId) {
     try {
-      await api.patch(
-        `/notifications/${notificationId}/read`
-      );
+      await api.patch(`/notifications/${notificationId}/read`);
 
       setNotifications((previous) =>
         previous.map((notification) =>
@@ -75,6 +72,24 @@ export default function Dashboard() {
       loadNotifications();
     }
   }
+  
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+
+    // Load notifications immediately after login.
+    loadNotifications();
+
+    // Refresh notifications every 10 seconds.
+    const intervalId = setInterval(() => {
+      loadNotifications();
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [user]);
+
 
   useEffect(() => {
     if (!canManageLeaves) return;
@@ -119,11 +134,10 @@ export default function Dashboard() {
       maximumFractionDigits: 2,
     }).format(amount ?? 0);
 
-
-    function handleLogout() {
-      logout();
-      navigate("/login");
-    }
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
 
   return (
     <div className="dashboard-page">
@@ -158,7 +172,6 @@ export default function Dashboard() {
               <div className="notification-dropdown">
                 <div className="notification-header">
                   <h3>Notifications</h3>
-
                   <button
                     type="button"
                     className="notification-refresh"
@@ -198,9 +211,7 @@ export default function Dashboard() {
                     >
                       <div className="notification-item-content">
                         <h4>{notification.title}</h4>
-
                         <p>{notification.message}</p>
-
                         <small>
                           {notification.created_at
                             ? new Date(
@@ -291,13 +302,14 @@ export default function Dashboard() {
           </div>
         </section>
 
-                
         {/* MODULE 6: DASHBOARD & ANALYTICS */}
         {canManageLeaves && (
           <section style={{ marginBottom: "30px" }}>
             <div style={{ marginBottom: "18px" }}>
               <h2>Dashboard & Analytics</h2>
-              <p>Overview of employees, attendance, leaves, and payroll.</p>
+              <p>
+                Overview of employees, attendance, leaves, and payroll.
+              </p>
             </div>
 
             {analyticsLoading && <p>Loading analytics...</p>}
@@ -311,7 +323,8 @@ export default function Dashboard() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(210px, 1fr))",
                     gap: "16px",
                     marginBottom: "20px",
                   }}
@@ -352,7 +365,8 @@ export default function Dashboard() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(210px, 1fr))",
                     gap: "16px",
                   }}
                 >
@@ -405,13 +419,11 @@ export default function Dashboard() {
           </section>
         )}
 
-
         {/* Employee-only services */}
         {isEmployee && (
           <>
             <section className="workspace-card">
               <div className="attendance-icon">👤</div>
-
               <div className="workspace-content">
                 <span className="workspace-tag">EMPLOYEE SERVICE</span>
                 <h2>My Profile</h2>
@@ -419,7 +431,6 @@ export default function Dashboard() {
                   View your personal details, employee information,
                   department, designation, and joining date.
                 </p>
-
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/my-profile")}
@@ -427,13 +438,11 @@ export default function Dashboard() {
                   View My Profile <span>→</span>
                 </button>
               </div>
-
               <div className="workspace-decoration">W</div>
             </section>
 
             <section className="workspace-card">
               <div className="attendance-icon">◷</div>
-
               <div className="workspace-content">
                 <span className="workspace-tag">EMPLOYEE SERVICE</span>
                 <h2>Attendance Management</h2>
@@ -441,7 +450,6 @@ export default function Dashboard() {
                   Record your daily check-in and check-out times, view
                   attendance history, and monitor your working hours.
                 </p>
-
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/attendance")}
@@ -449,13 +457,11 @@ export default function Dashboard() {
                   Open Attendance Dashboard <span>→</span>
                 </button>
               </div>
-
               <div className="workspace-decoration">W</div>
             </section>
 
             <section className="leave-workspace-card">
               <div className="leave-workspace-icon">📅</div>
-
               <div className="leave-workspace-content">
                 <span className="workspace-tag">EMPLOYEE SERVICE</span>
                 <h2>Leave Management</h2>
@@ -463,7 +469,6 @@ export default function Dashboard() {
                   Apply for sick, casual, or paid leave and track whether
                   your requests are pending, approved, or rejected.
                 </p>
-
                 <div className="leave-dashboard-actions">
                   <button
                     className="leave-dashboard-apply"
@@ -471,7 +476,6 @@ export default function Dashboard() {
                   >
                     + Apply for Leave <span>→</span>
                   </button>
-
                   <button
                     className="leave-dashboard-history"
                     onClick={() => navigate("/leaves/history")}
@@ -485,19 +489,13 @@ export default function Dashboard() {
             {/* Module 11: Leave Balance & Policies */}
             <section className="workspace-card">
               <div className="attendance-icon">📊</div>
-
               <div className="workspace-content">
-                <span className="workspace-tag">
-                  EMPLOYEE SERVICE
-                </span>
-
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
                 <h2>Leave Balance & Policies</h2>
-
                 <p>
                   View your remaining casual, sick, and paid leave
                   days and check company leave policies.
                 </p>
-
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/leave-balance")}
@@ -505,13 +503,11 @@ export default function Dashboard() {
                   View Leave Balance <span>→</span>
                 </button>
               </div>
-
-               <div className="workspace-decoration">W</div>
+              <div className="workspace-decoration">W</div>
             </section>
 
             <section className="workspace-card">
               <div className="attendance-icon">💰</div>
-
               <div className="workspace-content">
                 <span className="workspace-tag">EMPLOYEE SERVICE</span>
                 <h2>My Salary Details</h2>
@@ -519,7 +515,6 @@ export default function Dashboard() {
                   View your monthly basic salary, deductions, bonus,
                   and final net salary.
                 </p>
-
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/salary-details")}
@@ -527,30 +522,62 @@ export default function Dashboard() {
                   View Salary Details <span>→</span>
                 </button>
               </div>
-
               <div className="workspace-decoration">W</div>
             </section>
 
-            
+            {/* Module 16: Document Management */}
+            <section className="workspace-card">
+              <div className="attendance-icon">📁</div>
+              <div className="workspace-content">
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
+                <h2>My Documents</h2>
+                <p>
+                  Upload, view, and download your identity documents,
+                  certificates, and other important files.
+                </p>
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/documents")}
+                >
+                  Open My Documents <span>→</span>
+                </button>
+              </div>
+              <div className="workspace-decoration">W</div>
+            </section>
 
+            {/* MODULE 17: My Performance Reviews */}
+            <section className="workspace-card">
+              <div className="attendance-icon">⭐</div>
+              <div className="workspace-content">
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
+                <h2>My Performance Reviews</h2>
+                <p>
+                  View your performance ratings, manager feedback,
+                  and review history.
+                </p>
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/performance-reviews")}
+                >
+                  View My Reviews <span>→</span>
+                </button>
+              </div>
+              <div className="workspace-decoration">W</div>
+            </section>
           </>
         )}
 
-        
+        {/* Admin-only services */}
         {isAdmin && (
           <section className="workspace-card">
             <div className="attendance-icon">🛡️</div>
-
             <div className="workspace-content">
               <span className="workspace-tag">ADMIN SERVICE</span>
-
               <h2>User Management</h2>
-
               <p>
                 Create user accounts, assign roles, edit user details,
                 and activate or deactivate accounts.
               </p>
-
               <button
                 className="attendance-btn"
                 onClick={() => navigate("/admin/users")}
@@ -558,25 +585,19 @@ export default function Dashboard() {
                 Open User Management <span>→</span>
               </button>
             </div>
-
             <div className="workspace-decoration">W</div>
           </section>
         )}
-
 
         {/* HR/Admin services */}
         {canManageLeaves && (
           <>
             <section className="workspace-card">
               <div className="attendance-icon">👥</div>
-
               <div className="workspace-content">
                 <span className="workspace-tag">HR / ADMIN SERVICE</span>
                 <h2>Employee Management</h2>
-                <p>
-                  View, search, add, and manage employee records.
-                </p>
-
+                <p>View, search, add, and manage employee records.</p>
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/employees")}
@@ -584,13 +605,11 @@ export default function Dashboard() {
                   Open Employee Management <span>→</span>
                 </button>
               </div>
-
               <div className="workspace-decoration">W</div>
             </section>
 
             <section className="workspace-card">
               <div className="attendance-icon">📋</div>
-
               <div className="workspace-content">
                 <span className="workspace-tag">HR / ADMIN SERVICE</span>
                 <h2>Manage Leave Requests</h2>
@@ -598,7 +617,6 @@ export default function Dashboard() {
                   View employee leave applications, filter requests by
                   status, and approve or reject pending leaves.
                 </p>
-
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/leaves/manage")}
@@ -606,14 +624,11 @@ export default function Dashboard() {
                   Open Leave Management <span>→</span>
                 </button>
               </div>
-
               <div className="workspace-decoration">W</div>
             </section>
 
-            
             <section className="workspace-card">
               <div className="attendance-icon">💰</div>
-
               <div className="workspace-content">
                 <span className="workspace-tag">HR / ADMIN SERVICE</span>
                 <h2>Payroll Management</h2>
@@ -621,7 +636,6 @@ export default function Dashboard() {
                   Generate employee payroll, calculate net salaries,
                   and review monthly salary records.
                 </p>
-
                 <button
                   className="attendance-btn"
                   onClick={() => navigate("/payroll")}
@@ -629,10 +643,132 @@ export default function Dashboard() {
                   Open Payroll Dashboard <span>→</span>
                 </button>
               </div>
-
               <div className="workspace-decoration">W</div>
             </section>
 
+            {/* Module 14: Shift Management */}
+            <div className="dashboard-card shift-service-card">
+              <div className="dashboard-card-icon shift-service-icon">🕒</div>
+              <div className="shift-service-content">
+                <p className="dashboard-card-label">HR / ADMIN SERVICE</p>
+                <h2>Shift Management</h2>
+                <p>
+                  Create and manage Morning, Evening, and Night shifts,
+                  including their start and end times.
+                </p>
+                <button onClick={() => navigate("/shifts")}>
+                  Open Shift Management <span>→</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Module 14: Shift Assignments */}
+            <div className="dashboard-card shift-service-card">
+              <div className="dashboard-card-icon shift-service-icon">👥</div>
+              <div className="shift-service-content">
+                <p className="dashboard-card-label">HR / ADMIN SERVICE</p>
+                <h2>Shift Assignments</h2>
+                <p>
+                  Assign work shifts to employees and view their current
+                  shift assignments.
+                </p>
+                <button onClick={() => navigate("/shift-assignments")}>
+                  Open Shift Assignments <span>→</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Module 15: Leave Calendar */}
+            <div className="dashboard-card shift-service-card">
+              <div className="dashboard-card-icon shift-service-icon">
+                📅
+              </div>
+              <div className="shift-service-content">
+                <p className="dashboard-card-label">HR / ADMIN SERVICE</p>
+                <h2>Leave Calendar & Availability</h2>
+                <p>
+                  View approved employee leaves, filter by date and
+                  department, and check team availability.
+                </p>
+                <button onClick={() => navigate("/leave-calendar")}>
+                  Open Leave Calendar <span>→</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Module 16: Document Management */}
+            <div className="dashboard-card shift-service-card">
+              <div className="dashboard-card-icon shift-service-icon">📁</div>
+              <div className="shift-service-content">
+                <p className="dashboard-card-label">HR / ADMIN SERVICE</p>
+                <h2>Document Management</h2>
+                <p>
+                  Access employee documents and manage important
+                  certificates and files.
+                </p>
+                <button onClick={() => navigate("/documents")}>
+                  Open Document Management <span>→</span>
+                </button>
+              </div>
+            </div>
+
+            
+            
+            <div
+              className="document-service-card"
+              onClick={() => navigate("/advanced-reports")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate("/advanced-reports");
+                }
+              }}
+            >
+              <div className="document-service-icon">📊</div>
+
+              <div className="document-service-content">
+                <span className="document-service-label">HR / ADMIN SERVICE</span>
+
+                <h2>Advanced Analytics & Reports</h2>
+
+                <p>
+                  View attendance trends, leave statistics, employee performance,
+                  and department-wise reports.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate("/advanced-reports");
+                  }}
+                >
+                  Open Advanced Reports <span>→</span>
+                </button>
+              </div>
+            </div>
+
+
+
+            {/* MODULE 17: Performance Management */}
+            <div className="dashboard-card shift-service-card">
+              <div className="dashboard-card-icon shift-service-icon">
+                ⭐
+              </div>
+              <div className="shift-service-content">
+                <p className="dashboard-card-label">HR / ADMIN SERVICE</p>
+                <h2>Performance Management</h2>
+                <p>
+                  Add employee performance reviews, assign ratings,
+                  provide feedback, and review performance history.
+                </p>
+                <button onClick={() => navigate("/performance-reviews")}>
+                  Open Performance Management <span>→</span>
+                </button>
+              </div>
+            </div>
           </>
         )}
 

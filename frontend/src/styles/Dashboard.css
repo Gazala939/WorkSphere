@@ -492,3 +492,266 @@
     width: 100%;
   }
 }
+
+/* Module 14: Dashboard Shift Cards */
+
+/* Module 14 cards - match Payroll Management layout */
+
+.shift-service-card {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 26px;
+  padding: 32px 24px;
+  background: #ffffff;
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 0;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.shift-service-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.shift-service-card .shift-service-icon {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  background: #e8efff;
+  border-radius: 17px;
+  font-size: 30px;
+  box-sizing: border-box;
+}
+
+.shift-service-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.shift-service-content .dashboard-card-label {
+  margin: 4px 0 10px;
+  color: #2563ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.shift-service-content h2 {
+  margin: 0 0 12px;
+  color: #102b59;
+  font-size: 25px;
+  font-weight: 700;
+}
+
+.shift-service-content > p:not(.dashboard-card-label) {
+  margin: 0 0 28px;
+  color: #64748b;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.shift-service-content button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 23px;
+  background: #2860ed;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 5px 12px rgba(40, 96, 237, 0.2);
+}
+
+.shift-service-content button:hover {
+  background: #1e4fd0;
+}
+
+.shift-service-content button span {
+  font-size: 20px;
+}
+
+@media (max-width: 600px) {
+  .shift-service-card {
+    gap: 14px;
+    padding: 22px 16px;
+  }
+
+  .shift-service-card .shift-service-icon {
+    flex-basis: 48px;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    border-radius: 12px;
+  }
+
+  .shift-service-content h2 {
+    font-size: 20px;
+  }
+
+  .shift-service-content > p:not(.dashboard-card-label) {
+    font-size: 14px;
+  }
+
+  .shift-service-content button {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+}
+
+
+/* Module 18: Advanced Analytics & Reports Dashboard Card */
+
+.shift-service-card {
+  cursor: pointer;
+  border: 1px solid #e0e7ff;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 22px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.shift-service-card:hover {
+  transform: translateY(-4px);
+  border-color: #6366f1;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.12);
+}
+
+.shift-service-card:focus-visible {
+  outline: 3px solid #818cf8;
+  outline-offset: 3px;
+}
+
+.shift-service-content h3 {
+  margin: 0 0 10px;
+  color: #1e293b;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.shift-service-content p {
+  margin: 0 0 16px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.shift-service-content span {
+  color: #4f46e5;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shift-service-card:hover .shift-service-content span {
+  color: #3730a3;
+}
+
+
+/* Module 18: Advanced Analytics & Reports */
+/* Match Document Management card styling */
+
+.document-service-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.document-service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+.document-service-card:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
+}
+
+.document-service-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #eff6ff;
+  font-size: 30px;
+}
+
+.document-service-content {
+  flex: 1;
+}
+
+.document-service-label {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+}
+
+.document-service-content h2 {
+  margin: 0 0 10px;
+  color: #1e293b;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.document-service-content p {
+  margin: 0 0 18px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.document-service-content button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.document-service-content button:hover {
+  background: #1d4ed8;
+}
+
+.document-service-content button span {
+  font-size: 18px;
+}
+
+@media (max-width: 600px) {
+  .document-service-card {
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .document-service-content h2 {
+    font-size: 18px;
+  }
+}

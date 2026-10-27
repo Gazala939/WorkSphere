@@ -53,14 +53,13 @@ def get_current_user(
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"}
         )
-        
-    
-        # Reject deactivated accounts, even if the user has an old JWT token.
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your account has been deactivated. Contact the administrator."
-            )
+
+    # Reject deactivated accounts, even if the user has an old JWT token.
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated. Contact the administrator."
+        )
 
 
     # Database role must match the role in the JWT.

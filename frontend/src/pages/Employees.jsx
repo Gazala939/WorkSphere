@@ -10,7 +10,11 @@ function Employees() {
   const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("");
+  const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
+  const [attendance, setAttendance] = useState("");
+  const [performance, setPerformance] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -20,7 +24,7 @@ function Employees() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, department, status]);
+  }, [search, department, role, status, attendance, performance]);
 
   async function fetchEmployees() {
     setLoading(true);
@@ -31,7 +35,10 @@ function Employees() {
 
       if (search.trim()) params.search = search.trim();
       if (department.trim()) params.department = department.trim();
+      if (role) params.role = role;
       if (status) params.status = status;
+      if (attendance) params.attendance = attendance;
+      if (performance) params.performance = performance;
 
       const response = await api.get("/employees", { params });
       setEmployees(response.data);
@@ -48,8 +55,19 @@ function Employees() {
   function clearFilters() {
     setSearch("");
     setDepartment("");
+    setRole("");
     setStatus("");
+    setAttendance("");
+    setPerformance("");
   }
+
+  const activeCount = employees.filter(
+    (employee) => employee.status === "ACTIVE"
+  ).length;
+
+  const inactiveCount = employees.filter(
+    (employee) => employee.status === "INACTIVE"
+  ).length;
 
   return (
     <div className="employees-page">
@@ -58,11 +76,12 @@ function Employees() {
           <p className="employees-eyebrow">WORKSPHERE HRMS</p>
           <h1>Employee Management</h1>
           <p className="employees-subtitle">
-            View, search, and manage employee records.
+            Search, filter, and manage employee records.
           </p>
         </div>
 
         <button
+          type="button"
           className="employee-add-button"
           onClick={() => navigate("/employees/add")}
         >
@@ -70,75 +89,142 @@ function Employees() {
         </button>
       </header>
 
+      {/* Employee summary cards */}
       <section className="employee-stats">
         <div className="employee-stat-card">
-          <span>Total employees shown</span>
+          <span>Employees Found</span>
           <strong>{employees.length}</strong>
         </div>
 
         <div className="employee-stat-card">
-          <span>Active employees shown</span>
-          <strong>
-            {employees.filter((employee) => employee.status === "ACTIVE").length}
-          </strong>
+          <span>Active Employees</span>
+          <strong>{activeCount}</strong>
         </div>
 
         <div className="employee-stat-card">
-          <span>Inactive employees shown</span>
-          <strong>
-            {employees.filter((employee) => employee.status === "INACTIVE").length}
-          </strong>
+          <span>Inactive Employees</span>
+          <strong>{inactiveCount}</strong>
         </div>
       </section>
 
+      {/* Advanced search and filters */}
       <section className="employee-list-card">
         <div className="employee-list-heading">
           <div>
-            <h2>Employees</h2>
-            <p>Search and filter employee records.</p>
+            <h2>Advanced Employee Search</h2>
+            <p>
+              Find employees using multiple search and filter options.
+            </p>
           </div>
 
-          <button className="employee-clear-button" onClick={clearFilters}>
-            Clear filters
+          <button
+            type="button"
+            className="employee-clear-button"
+            onClick={clearFilters}
+          >
+            Clear Filters
           </button>
         </div>
 
         <div className="employee-filters">
-          <input
-            type="text"
-            placeholder="Search by name or designation..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            aria-label="Search employees"
-          />
+          <div className="employee-filter-field employee-search-field">
+            <label htmlFor="employee-search">Search Employee</label>
+            <input
+              id="employee-search"
+              type="text"
+              placeholder="Search name or designation..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
 
-          <input
-            type="text"
-            placeholder="Filter by department"
-            value={department}
-            onChange={(event) => setDepartment(event.target.value)}
-            aria-label="Filter by department"
-          />
+          <div className="employee-filter-field">
+            <label htmlFor="employee-department">Department</label>
+            <input
+              id="employee-department"
+              type="text"
+              placeholder="Enter department..."
+              value={department}
+              onChange={(event) => setDepartment(event.target.value)}
+            />
+          </div>
 
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            aria-label="Filter by status"
-          >
-            <option value="">All statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
+          <div className="employee-filter-field">
+            <label htmlFor="employee-role">User Role</label>
+            <select
+              id="employee-role"
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
+            >
+              <option value="">All Roles</option>
+              <option value="EMPLOYEE">Employee</option>
+              <option value="HR">HR</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+
+          <div className="employee-filter-field">
+            <label htmlFor="employee-status">Employee Status</label>
+            <select
+              id="employee-status"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
+
+          <div className="employee-filter-field">
+            <label htmlFor="employee-attendance">Attendance</label>
+            <select
+              id="employee-attendance"
+              value={attendance}
+              onChange={(event) => setAttendance(event.target.value)}
+            >
+              <option value="">All Attendance</option>
+              <option value="PRESENT">Present</option>
+              <option value="ABSENT">Absent</option>
+              <option value="HALF_DAY">Half Day</option>
+              <option value="NOT_RECORDED">Not Recorded</option>
+            </select>
+          </div>
+
+          <div className="employee-filter-field">
+            <label htmlFor="employee-performance">Performance</label>
+            <select
+              id="employee-performance"
+              value={performance}
+              onChange={(event) => setPerformance(event.target.value)}
+            >
+              <option value="">All Performance</option>
+              <option value="HIGH">High</option>
+              <option value="AVERAGE">Average</option>
+              <option value="LOW">Low</option>
+              <option value="NOT_REVIEWED">Not Reviewed</option>
+            </select>
+          </div>
         </div>
 
-        {error && <div className="employee-error">{error}</div>}
+        <div className="employee-results-info">
+          {loading
+            ? "Updating employee results..."
+            : `${employees.length} employee(s) found`}
+        </div>
+
+        {error && (
+          <div className="employee-error" role="alert">
+            {error}
+          </div>
+        )}
 
         {loading ? (
           <p className="employee-message">Loading employees...</p>
         ) : employees.length === 0 ? (
           <div className="employee-empty">
             <h3>No employees found</h3>
-            <p>Try changing your search or filters.</p>
+            <p>Try changing your search or clearing some filters.</p>
           </div>
         ) : (
           <div className="employee-table-wrapper">
@@ -162,14 +248,16 @@ function Employees() {
                     <td>EMP-{String(employee.id).padStart(3, "0")}</td>
 
                     <td>
-
                       <button
                         type="button"
                         className="employee-name employee-name-link"
-                        onClick={() => navigate(`/employees/${employee.id}`)}
+                        onClick={() =>
+                          navigate(`/employees/${employee.id}`)
+                        }
                       >
                         {employee.full_name}
                       </button>
+
                       <small>User ID: {employee.user_id}</small>
                     </td>
 
@@ -206,6 +294,7 @@ function Employees() {
 
                     <td>
                       <button
+                        type="button"
                         className="employee-edit-button"
                         onClick={() =>
                           navigate(`/employees/${employee.id}/edit`)

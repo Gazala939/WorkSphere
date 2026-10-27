@@ -115,6 +115,12 @@ class AttendanceResponse(BaseModel):
     working_hours: float | None = None
     is_late: bool = False
     overtime_hours: float | None = None
+    
+    # Phase 3 - Shift Management
+    shift_name: str | None = None
+    late_minutes: int = 0
+    is_early_checkout: bool = False
+    early_checkout_minutes: int = 0
 
 
 
@@ -205,5 +211,108 @@ class LeaveBalanceResponse(BaseModel):
     employee_id: int
     leave_type: str
     remaining_days: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShiftCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    start_time: time
+    end_time: time
+
+
+class ShiftResponse(BaseModel):
+    id: int
+    name: str
+    start_time: time
+    end_time: time
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeShiftCreate(BaseModel):
+    employee_id: int = Field(gt=0)
+    shift_id: int = Field(gt=0)
+
+
+class EmployeeShiftResponse(BaseModel):
+    id: int
+    employee_id: int
+    shift_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+    
+    
+class LeaveCalendarItem(BaseModel):
+    leave_id: int
+    employee_id: int
+    employee_name: str
+    department: str
+    leave_type: str
+    start_date: date
+    end_date: date
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TeamAvailabilityItem(BaseModel):
+    employee_id: int
+    employee_name: str
+    department: str
+    availability: str
+    leave_type: str | None = None
+    leave_start_date: date | None = None
+    leave_end_date: date | None = None
+    
+
+# MODULE 16: DOCUMENT MANAGEMENT
+
+class DocumentResponse(BaseModel):
+    id: int
+    employee_id: int
+    file_name: str
+    file_url: str
+    uploaded_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================================
+# MODULE 17: PERFORMANCE MANAGEMENT SCHEMAS
+# ==========================================================
+
+
+
+class PerformanceCreate(BaseModel):
+    employee_id: int = Field(gt=0)
+    review_period: str = Field(min_length=1, max_length=50)
+    rating: float = Field(ge=1, le=5)
+    feedback: str = Field(min_length=1, max_length=1000)
+
+
+class PerformanceResponse(BaseModel):
+    id: int
+    employee_id: int
+    review_period: str
+    rating: float
+    feedback: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PerformanceReviewCreate(BaseModel):
+    employee_id: int
+    review_period: str = Field(min_length=1, max_length=50)
+    rating: float = Field(ge=1, le=5)
+    feedback: str = Field(min_length=1, max_length=1000)
+    
+class PerformanceReviewResponse(BaseModel):
+    id: int
+    employee_id: int
+    review_period: str
+    rating: float
+    feedback: str
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

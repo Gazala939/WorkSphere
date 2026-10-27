@@ -10,7 +10,8 @@ from sqlalchemy import(
     Float,
     Time,
     ForeignKey,
-    Boolean
+    Boolean,
+    UniqueConstraint
 )
 from database import Base
 
@@ -80,6 +81,42 @@ class Attendance(Base):
         String(20),
         nullable=False,
         default="ABSENT"
+    )
+  
+# SHIFTS  
+class Shift(Base):
+    __tablename__ = "shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    
+    
+class EmployeeShift(Base):
+    __tablename__ = "employee_shifts"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "employee_id",
+            name="uq_employee_current_shift",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True,
+    )
+
+    shift_id = Column(
+        Integer,
+        ForeignKey("shifts.id"),
+        nullable=False,
+        index=True,
     )
     
 
@@ -218,6 +255,103 @@ class Notification(Base):
     )
 
     # Notification creation time
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    
+
+# MODULE 16: DOCUMENT MANAGEMENT
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True
+    )
+
+    file_name = Column(String(255), nullable=False)
+
+    file_url = Column(String(500), nullable=False)
+
+    uploaded_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+
+# ==========================================================
+# MODULE 17: PERFORMANCE MANAGEMENT
+# ==========================================================
+
+class Performance(Base):
+    __tablename__ = "performances"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True
+    )
+
+    review_period = Column(
+        String(50),
+        nullable=False
+    )
+
+    rating = Column(
+        Float,
+        nullable=False
+    )
+
+    feedback = Column(
+        String(1000),
+        nullable=False
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+# ==========================================================
+# MODULE 17: PERFORMANCE MANAGEMENT
+# ==========================================================
+
+class PerformanceReview(Base):
+    __tablename__ = "performance_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True
+    )
+
+    review_period = Column(String(50), nullable=False)
+
+    rating = Column(Float, nullable=False)
+
+    feedback = Column(String(1000), nullable=False)
+
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

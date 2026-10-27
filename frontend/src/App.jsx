@@ -25,6 +25,16 @@ import LeaveBalance from "./pages/LeaveBalance";
 
 import UserManagement from "./pages/UserManagement";
 
+import Shifts from "./pages/Shifts";
+import ShiftAssignments from "./pages/ShiftAssignments";
+
+import LeaveCalendar from "./pages/LeaveCalendar";
+
+import Documents from "./pages/Documents";
+
+import PerformanceReviews from "./pages/PerformanceReviews";
+
+import AdvancedReports from "./pages/AdvancedReports";
 
 function DashboardRedirect() {
   const { user } = useAuth();
@@ -206,6 +216,62 @@ function AppRoutes() {
         element={
           <ProtectedRoute roles={["EMPLOYEE"]}>
             <SalaryDetails />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Module 14: Shift Management */}
+      <Route
+        path="/shifts"
+        element={
+          <ProtectedRoute roles={["HR", "ADMIN"]}>
+            <Shifts />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/shift-assignments"
+        element={
+          <ProtectedRoute roles={["HR", "ADMIN"]}>
+            <ShiftAssignments />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/leave-calendar"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <LeaveCalendar />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Module 16: Document Management */}
+      <Route
+        path="/documents"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <Documents />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/performance-reviews"
+        element={
+          <ProtectedRoute>
+            <PerformanceReviews />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/advanced-reports"
+        element={
+          <ProtectedRoute roles={["HR", "ADMIN"]}>
+            <AdvancedReports />
           </ProtectedRoute>
         }
       />

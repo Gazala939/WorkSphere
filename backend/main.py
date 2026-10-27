@@ -1,3 +1,9 @@
+import os
+import uuid
+from pathlib import Path
+
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
 
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
@@ -21,6 +27,12 @@ from models import (
     Notification,
     LeavePolicy,
     LeaveBalance,
+    Shift,
+    EmployeeShift,
+    Employee,
+    Document,
+    Document,
+    PerformanceReview
 )
 from schemas import (
     RegisterRequest,
@@ -45,6 +57,15 @@ from schemas import (
     AdminUserCreate,
     AdminUserUpdate,
     UserStatusUpdate,
+    ShiftCreate,
+    ShiftResponse,
+    EmployeeShiftCreate,
+    EmployeeShiftResponse,
+    LeaveCalendarItem,
+    TeamAvailabilityItem,
+    DocumentResponse,
+    PerformanceReviewCreate,
+    PerformanceReviewResponse,
 )
 from security import (
     hash_password,
@@ -54,6 +75,10 @@ from security import (
 from dependencies import get_current_user, require_role
 
 INDIA_TIMEZONE = ZoneInfo("Asia/Kolkata")
+
+# MODULE 16: DOCUMENT MANAGEMENT
+DOCUMENTS_DIR = Path(__file__).resolve().parent / "uploaded_documents"
+DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def create_notification(
@@ -83,13 +108,12 @@ async def lifespan(app: FastAPI):
     )
 
     scheduler.add_job(
-        run_daily_absence_check,
-        trigger="cron",
-        day_of_week="mon-fri",
-        hour=18,
-        minute=45,
+        run_scheduled_absence_check,
+        trigger="interval",
+        minutes=5,
         id="daily_absence_check",
         replace_existing=True,
+        max_instances=1,
     )
 
     scheduler.start()
@@ -475,60 +499,133 @@ def admin_delete_user(
 # MODULE 2: EMPLOYEE MANAGEMENT
 # ==========================================================
 
-@app.post(
+@app.get(
     "/employees",
-    response_model=EmployeeResponse,
-    status_code=status.HTTP_201_CREATED
+    response_model=list[EmployeeResponse]
 )
-def create_employee(
-    data: EmployeeCreate,
+def list_employees(
+    search: str | None = Query(
+        default=None, min_length=1, max_length=100
+    ),
+    department: str | None = Query(
+        default=None, min_length=1, max_length=100
+    ),
+    employee_status: str | None = Query(
+        default=None,
+        alias="status",
+        pattern="^(ACTIVE|INACTIVE)$"
+    ),
+    role: str | None = Query(
+        default=None,
+        pattern="^(EMPLOYEE|HR|ADMIN)$"
+    ),
+    attendance: str | None = Query(
+        default=None,
+        pattern="^(PRESENT|ABSENT|HALF_DAY|NOT_RECORDED)$"
+    ),
+    performance: str | None = Query(
+        default=None,
+        pattern="^(HIGH|AVERAGE|LOW|NOT_REVIEWED)$"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("HR", "ADMIN"))
 ):
-    # Check whether the linked user exists
-    linked_user = db.query(User).filter(
-        User.id == data.user_id
-    ).first()
+    # Start with employee records and their linked user accounts.
+    query = (
+        db.query(Employee)
+        .join(User, Employee.user_id == User.id)
+    )
 
-    if not linked_user:
-        raise HTTPException(
-            status_code=404,
-            detail="Linked user not found"
+    # Search by employee name or designation.
+    if search:
+        search_term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Employee.full_name.ilike(search_term),
+                Employee.designation.ilike(search_term)
+            )
         )
 
-    # One employee profile per user
-    existing_employee = db.query(Employee).filter(
-        Employee.user_id == data.user_id
-    ).first()
-
-    if existing_employee:
-        raise HTTPException(
-            status_code=409,
-            detail="Employee profile already exists for this user"
+    # Filter by department.
+    if department:
+        query = query.filter(
+            Employee.department.ilike(department.strip())
         )
 
-    employee_data = data.model_dump()
-    employee_data["full_name"] = employee_data["full_name"].strip()
-    employee_data["designation"] = employee_data["designation"].strip()
-    employee_data["department"] = employee_data["department"].strip()
-
-    if not all([
-        employee_data["full_name"],
-        employee_data["designation"],
-        employee_data["department"]
-    ]):
-        raise HTTPException(
-            status_code=422,
-            detail="Employee text fields cannot be empty"
+    # Filter by employee status.
+    if employee_status:
+        query = query.filter(
+            Employee.status == employee_status
         )
 
-    employee = Employee(**employee_data)
+    # Filter by linked account role.
+    if role:
+        query = query.filter(User.role == role)
 
-    db.add(employee)
-    db.commit()
-    db.refresh(employee)
+    employees = query.order_by(Employee.id.desc()).all()
 
-    return employee
+    results = []
+
+    for employee in employees:
+        # Find this employee's most recent attendance record.
+        latest_attendance = (
+            db.query(Attendance)
+            .filter(Attendance.employee_id == employee.id)
+            .order_by(
+                Attendance.date.desc(),
+                Attendance.id.desc()
+            )
+            .first()
+        )
+
+        # Find this employee's most recent performance review.
+        latest_review = (
+            db.query(PerformanceReview)
+            .filter(
+                PerformanceReview.employee_id == employee.id
+            )
+            .order_by(
+                PerformanceReview.created_at.desc()
+            )
+            .first()
+        )
+
+        # Apply attendance filter using the latest record.
+        if attendance:
+            if attendance == "NOT_RECORDED":
+                if latest_attendance is not None:
+                    continue
+            elif (
+                latest_attendance is None
+                or latest_attendance.status != attendance
+            ):
+                continue
+
+        # Apply performance filter using the latest rating.
+        if performance:
+            if performance == "NOT_REVIEWED":
+                if latest_review is not None:
+                    continue
+            else:
+                if latest_review is None:
+                    continue
+
+                rating = latest_review.rating
+
+                if performance == "HIGH" and rating < 4:
+                    continue
+
+                if performance == "AVERAGE" and not (
+                    3 <= rating < 4
+                ):
+                    continue
+
+                if performance == "LOW" and rating >= 3:
+                    continue
+
+        results.append(employee)
+
+    return results
 
 @app.post(
     "/employees/with-account",
@@ -608,43 +705,6 @@ def create_employee_with_account(
     except Exception:
         db.rollback()
         raise
-
-
-@app.get(
-    "/employees",
-    response_model=list[EmployeeResponse]
-)
-def list_employees(
-    search: str | None = Query(default=None, min_length=1, max_length=100),
-    department: str | None = Query(default=None, min_length=1, max_length=100),
-    employee_status: str | None = Query(
-        default=None,
-        alias="status",
-        pattern="^(ACTIVE|INACTIVE)$"
-    ),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("HR", "ADMIN"))
-):
-    query = db.query(Employee)
-
-    if search:
-        search_term = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                Employee.full_name.ilike(search_term),
-                Employee.designation.ilike(search_term)
-            )
-        )
-
-    if department:
-        query = query.filter(
-            Employee.department.ilike(department.strip())
-        )
-
-    if employee_status:
-        query = query.filter(Employee.status == employee_status)
-
-    return query.order_by(Employee.id.desc()).all()
 
 
 @app.get(
@@ -817,36 +877,123 @@ def make_utc_aware(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def build_attendance_response(attendance: Attendance):
-    """Calculate working hours for an attendance record."""
+def build_attendance_response(
+    attendance: Attendance,
+    db: Session,
+):
+    """Calculate attendance details using the assigned shift."""
 
     working_hours = None
-
-    if attendance.check_in and attendance.check_out:
-        check_in_time = make_utc_aware(attendance.check_in)
-        check_out_time = make_utc_aware(attendance.check_out)
-
-        duration = check_out_time - check_in_time
-        working_hours = round(duration.total_seconds() / 3600, 2)
-        
-    
     is_late = False
+    late_minutes = 0
+    is_early_checkout = False
+    early_checkout_minutes = 0
     overtime_hours = None
+    shift_name = None
 
+    # 1. Calculate working hours
     if attendance.check_in and attendance.check_out:
-        overtime_hours = round(max(working_hours - 8, 0), 2)
-    
-
-    if attendance.check_in:
         check_in_utc = make_utc_aware(attendance.check_in)
-        check_in_india = check_in_utc.astimezone(INDIA_TIMEZONE)
+        check_out_utc = make_utc_aware(attendance.check_out)
 
-        official_check_in = time(9, 30)
+        duration = check_out_utc - check_in_utc
+        working_hours = round(
+            duration.total_seconds() / 3600, 2
+        )
 
-        is_late = check_in_india.time().replace(
-            tzinfo=None
-        ) > official_check_in
+        overtime_hours = round(
+            max(working_hours - 8, 0), 2
+        )
 
+    # 2. Find the employee's assigned shift
+    assignment = (
+        db.query(EmployeeShift)
+        .filter(
+            EmployeeShift.employee_id == attendance.employee_id
+        )
+        .first()
+    )
+
+    shift = None
+
+    if assignment:
+        shift = (
+            db.query(Shift)
+            .filter(Shift.id == assignment.shift_id)
+            .first()
+        )
+
+    # 3. Compare attendance with the assigned shift
+    if shift:
+        shift_name = shift.name
+
+        shift_start = datetime.combine(
+            attendance.date,
+            shift.start_time,
+        ).replace(tzinfo=INDIA_TIMEZONE)
+
+        shift_end_date = attendance.date
+
+        # Night shift ends on the following day
+        if shift.end_time <= shift.start_time:
+            shift_end_date += timedelta(days=1)
+
+        shift_end = datetime.combine(
+            shift_end_date,
+            shift.end_time,
+        ).replace(tzinfo=INDIA_TIMEZONE)
+
+        if attendance.check_in:
+            check_in_utc = make_utc_aware(
+                attendance.check_in
+            )
+            check_in_india = check_in_utc.astimezone(
+                INDIA_TIMEZONE
+            )
+
+            if check_in_india > shift_start:
+                late_minutes = int(
+                    (
+                        check_in_india - shift_start
+                    ).total_seconds() // 60
+                )
+                is_late = late_minutes > 0
+
+        if attendance.check_out:
+            check_out_utc = make_utc_aware(
+                attendance.check_out
+            )
+            check_out_india = check_out_utc.astimezone(
+                INDIA_TIMEZONE
+            )
+
+            if check_out_india < shift_end:
+                early_checkout_minutes = int(
+                    (
+                        shift_end - check_out_india
+                    ).total_seconds() // 60
+                )
+                is_early_checkout = (
+                    early_checkout_minutes > 0
+                )
+
+    else:
+        # Preserve the existing 9:30 AM rule for employees
+        # who have not yet been assigned a shift.
+        if attendance.check_in:
+            check_in_utc = make_utc_aware(
+                attendance.check_in
+            )
+            check_in_india = check_in_utc.astimezone(
+                INDIA_TIMEZONE
+            )
+
+            official_check_in = time(9, 30)
+
+            is_late = (
+                check_in_india.time().replace(tzinfo=None)
+                > official_check_in
+            )
 
     return {
         "id": attendance.id,
@@ -858,7 +1005,132 @@ def build_attendance_response(attendance: Attendance):
         "working_hours": working_hours,
         "is_late": is_late,
         "overtime_hours": overtime_hours,
+        "shift_name": shift_name,
+        "late_minutes": late_minutes,
+        "is_early_checkout": is_early_checkout,
+        "early_checkout_minutes": early_checkout_minutes,
     }
+    
+def auto_mark_absent_employees(db: Session):
+    """
+    Mark eligible employees absent after their shift starts
+    and the 30-minute grace period has passed.
+    """
+
+    now_india = datetime.now(INDIA_TIMEZONE)
+    today = now_india.date()
+    grace_period = timedelta(minutes=30)
+
+    # Find employees who have an assigned shift.
+    assignments = db.query(EmployeeShift).all()
+
+    absent_count = 0
+    skipped_count = 0
+
+    for assignment in assignments:
+
+        # Find the employee.
+        employee = db.query(Employee).filter(
+            Employee.id == assignment.employee_id
+        ).first()
+
+        if not employee:
+            continue
+
+        # Skip inactive employees.
+        if (
+            employee.status != "ACTIVE"
+            or employee.joining_date > today
+        ):
+            continue
+
+        # Find the employee's assigned shift.
+        shift = db.query(Shift).filter(
+            Shift.id == assignment.shift_id
+        ).first()
+
+        if not shift:
+            continue
+
+        # Do not mark absent before the grace period ends.
+        shift_start = datetime.combine(
+            today,
+            shift.start_time.replace(tzinfo=None)
+        ).replace(tzinfo=INDIA_TIMEZONE)
+
+        if now_india < shift_start + grace_period:
+            continue
+
+        # Skip employees who already have an attendance record.
+        existing_attendance = db.query(Attendance).filter(
+            Attendance.employee_id == employee.id,
+            Attendance.date == today
+        ).first()
+
+        if existing_attendance:
+            skipped_count += 1
+            continue
+
+        # Skip employees who have approved leave today.
+        approved_leave = db.query(Leave).filter(
+            Leave.employee_id == employee.id,
+            Leave.status == "APPROVED",
+            Leave.start_date <= today,
+            Leave.end_date >= today
+        ).first()
+
+        if approved_leave:
+            skipped_count += 1
+            continue
+
+        # Create an absent attendance record.
+        attendance = Attendance(
+            employee_id=employee.id,
+            date=today,
+            check_in=None,
+            check_out=None,
+            status="ABSENT"
+        )
+
+        db.add(attendance)
+        db.flush()
+
+        # Notify the employee if their account is linked.
+        if employee.user_id:
+            create_notification(
+                db=db,
+                user_id=employee.user_id,
+                title="Attendance Alert",
+                message=(
+                    f"You were marked absent for {today} "
+                    f"because no attendance was recorded "
+                    f"after your shift's 30-minute grace period."
+                )
+            )
+
+        absent_count += 1
+
+    db.commit()
+
+    return {
+        "date": str(today),
+        "absent_marked": absent_count,
+        "employees_skipped": skipped_count
+    }
+    
+def run_scheduled_absence_check():
+    db = SessionLocal()
+
+    try:
+        result = auto_mark_absent_employees(db)
+        print(f"Automatic absence check: {result}")
+
+    except Exception as error:
+        db.rollback()
+        print(f"Automatic absence check failed: {error}")
+
+    finally:
+        db.close()
 
 
 
@@ -877,7 +1149,8 @@ def check_in(
             detail="Employee profile not found",
         )
 
-    today = datetime.now(INDIA_TIMEZONE).date()
+    now_local = datetime.now(INDIA_TIMEZONE)
+    today = now_local.date()
 
     attendance = db.query(Attendance).filter(
         Attendance.employee_id == employee.id,
@@ -889,6 +1162,25 @@ def check_in(
             status_code=409,
             detail="You have already checked in today",
         )
+
+    # Find the employee's assigned shift, if available.
+    employee_shift = db.query(EmployeeShift).filter(
+        EmployeeShift.employee_id == employee.id
+    ).first()
+
+    shift = None
+    if employee_shift:
+        shift = db.query(Shift).filter(
+            Shift.id == employee_shift.shift_id
+        ).first()
+
+    # Use the assigned shift start time or default to 9:30 AM.
+    official_start = (
+        shift.start_time if shift else time(9, 30)
+    )
+
+    actual_time = now_local.time().replace(tzinfo=None)
+    is_late = actual_time > official_start
 
     if attendance is None:
         attendance = Attendance(
@@ -902,18 +1194,34 @@ def check_in(
         attendance.check_in = datetime.now(timezone.utc)
         attendance.status = "PRESENT"
 
-    # Create notification for BOTH new and existing records
+    # Always create the normal check-in notification.
     create_notification(
         db=db,
         user_id=current_user.id,
         title="Attendance Check-In",
-        message=f"Your attendance check-in was recorded for {today}.",
+        message=(
+            f"Your attendance check-in was recorded for {today}."
+        ),
     )
+
+    # Create an additional alert if the employee is late.
+    if is_late:
+        create_notification(
+            db=db,
+            user_id=current_user.id,
+            title="Late Attendance Alert",
+            message=(
+                f"You checked in at {now_local.strftime('%I:%M %p')}. "
+                f"Your scheduled shift starts at "
+                f"{official_start.strftime('%I:%M %p')}."
+            ),
+        )
 
     db.commit()
     db.refresh(attendance)
 
-    return build_attendance_response(attendance)
+    return build_attendance_response(attendance, db)
+
 
 
 @app.post("/attendance/check-out", response_model=AttendanceResponse)
@@ -930,13 +1238,42 @@ def check_out(
             status_code=404,
             detail="Employee profile not found",
         )
+        
+        
 
-    today = datetime.now(INDIA_TIMEZONE).date()
+    now_india = datetime.now(INDIA_TIMEZONE)
+    today = now_india.date()
 
+    # First, look for an attendance record for today.
     attendance = db.query(Attendance).filter(
         Attendance.employee_id == employee.id,
         Attendance.date == today,
     ).first()
+
+    # If there is no open record today, look for yesterday's
+    # attendance record. This supports overnight shifts.
+    if not attendance or not attendance.check_in or attendance.check_out:
+        yesterday = today - timedelta(days=1)
+
+        previous_attendance = db.query(Attendance).filter(
+            Attendance.employee_id == employee.id,
+            Attendance.date == yesterday,
+            Attendance.check_out.is_(None),
+        ).order_by(Attendance.id.desc()).first()
+
+        if previous_attendance and previous_attendance.check_in:
+            assignment = db.query(EmployeeShift).filter(
+                EmployeeShift.employee_id == employee.id
+            ).first()
+
+            shift = None
+            if assignment:
+                shift = db.query(Shift).filter(
+                    Shift.id == assignment.shift_id
+                ).first()
+
+            if shift and shift.end_time <= shift.start_time:
+                attendance = previous_attendance
 
     if not attendance or not attendance.check_in:
         raise HTTPException(
@@ -967,7 +1304,7 @@ def check_out(
         user_id=current_user.id,
         title="Attendance Check-Out",
         message=(
-            f"Your check-out was recorded for {today}. "
+            f"Your check-out was recorded for {attendance.date}. "
             f"Working hours: {round(hours, 2)}. "
             f"Attendance status: {attendance.status}."
         ),
@@ -976,7 +1313,7 @@ def check_out(
     db.commit()
     db.refresh(attendance)
 
-    return build_attendance_response(attendance)
+    return build_attendance_response(attendance,db)
 
 
 @app.get("/attendance/me", response_model=list[AttendanceResponse])
@@ -999,7 +1336,7 @@ def my_attendance_history(
     ).order_by(Attendance.date.desc()).all()
 
     return [
-        build_attendance_response(record)
+        build_attendance_response(record,db)
         for record in records
     ]
 
@@ -1030,10 +1367,16 @@ def list_attendance(
     records = query.order_by(Attendance.date.desc()).all()
 
     return [
-        build_attendance_response(record)
+        build_attendance_response(record,db)
         for record in records
     ]
 
+@app.post("/attendance/run-absence-check")
+def run_absence_check(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    return auto_mark_absent_employees(db)
 
 # ==========================================================
 # MODULE 4: LEAVE MANAGEMENT
@@ -1185,6 +1528,28 @@ def decide_leave(
 
     # 5. Deduct balance only when approving
     if data.status == "APPROVED":
+        
+        # Prevent overlapping approved leaves for the same employee
+        conflicting_leave = db.query(Leave).filter(
+            Leave.employee_id == leave.employee_id,
+            Leave.id != leave.id,
+            Leave.status == "APPROVED",
+            Leave.start_date <= leave.end_date,
+            Leave.end_date >= leave.start_date
+        ).first()
+
+        if conflicting_leave:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Leave cannot be approved because this employee "
+                    "already has an approved leave that overlaps "
+                    "the requested dates "
+                    f"({conflicting_leave.start_date} to "
+                    f"{conflicting_leave.end_date})."
+                )
+            )
+
 
         # Calculate inclusive calendar days
         requested_days = (
@@ -1251,6 +1616,172 @@ def decide_leave(
         raise
 
     return leave
+
+
+# MODULE 15: LEAVE CALENDAR
+@app.get(
+    "/leave-calendar",
+    response_model=list[LeaveCalendarItem]
+)
+def get_leave_calendar(
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    department: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE", "HR", "ADMIN"))
+):
+    # Validate the requested date range
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(
+            status_code=422,
+            detail="End date cannot be before start date"
+        )
+
+    # Employees can only see their own department's calendar
+    employee_department = None
+
+    if current_user.role == "EMPLOYEE":
+        current_employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id
+        ).first()
+
+        if not current_employee:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee profile not found"
+            )
+
+        employee_department = current_employee.department
+
+        if department and department != employee_department:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only view your own department's calendar"
+            )
+
+    # Include only approved leave requests
+    query = (
+        db.query(Leave, Employee)
+        .join(Employee, Leave.employee_id == Employee.id)
+        .filter(Leave.status == "APPROVED")
+    )
+
+    # Include leaves overlapping the requested date range
+    if start_date:
+        query = query.filter(Leave.end_date >= start_date)
+
+    if end_date:
+        query = query.filter(Leave.start_date <= end_date)
+
+    # Apply department restrictions and optional filters
+    if employee_department is not None:
+        query = query.filter(
+            Employee.department == employee_department
+        )
+    elif department:
+        query = query.filter(
+            Employee.department == department
+        )
+
+    results = query.order_by(Leave.start_date.asc()).all()
+
+    return [
+        LeaveCalendarItem(
+            leave_id=leave.id,
+            employee_id=employee.id,
+            employee_name=employee.full_name,
+            department=employee.department,
+            leave_type=leave.leave_type,
+            start_date=leave.start_date,
+            end_date=leave.end_date,
+            status=leave.status
+        )
+        for leave, employee in results
+    ]
+
+
+# MODULE 15: TEAM AVAILABILITY
+@app.get(
+    "/team-availability",
+    response_model=list[TeamAvailabilityItem]
+)
+def get_team_availability(
+    selected_date: date = Query(default_factory=date.today),
+    department: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE", "HR", "ADMIN"))
+):
+    # Employees can only view availability in their own department
+    employee_department = None
+
+    if current_user.role == "EMPLOYEE":
+        current_employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id
+        ).first()
+
+        if not current_employee:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee profile not found"
+            )
+
+        employee_department = current_employee.department
+
+        if department and department != employee_department:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only view your own department's availability"
+            )
+
+    employee_query = db.query(Employee).filter(
+        Employee.status == "ACTIVE",
+        Employee.joining_date <= selected_date
+    )
+
+    if employee_department is not None:
+        employee_query = employee_query.filter(
+            Employee.department == employee_department
+        )
+    elif department:
+        employee_query = employee_query.filter(
+            Employee.department == department
+        )
+
+    employees = employee_query.order_by(Employee.full_name.asc()).all()
+
+    response = []
+
+    for employee in employees:
+        approved_leave = db.query(Leave).filter(
+            Leave.employee_id == employee.id,
+            Leave.status == "APPROVED",
+            Leave.start_date <= selected_date,
+            Leave.end_date >= selected_date
+        ).first()
+
+        if approved_leave:
+            response.append(
+                TeamAvailabilityItem(
+                    employee_id=employee.id,
+                    employee_name=employee.full_name,
+                    department=employee.department,
+                    availability="ON_LEAVE",
+                    leave_type=approved_leave.leave_type,
+                    leave_start_date=approved_leave.start_date,
+                    leave_end_date=approved_leave.end_date
+                )
+            )
+        else:
+            response.append(
+                TeamAvailabilityItem(
+                    employee_id=employee.id,
+                    employee_name=employee.full_name,
+                    department=employee.department,
+                    availability="AVAILABLE"
+                )
+            )
+
+    return response
 
 
 
@@ -1703,6 +2234,361 @@ def dashboard_analytics(
             "total_net_payroll": float(total_net_payroll)
         }
     }
+    
+
+# ==========================================================
+# MODULE 18: ADVANCED ANALYTICS & REPORTS
+# ==========================================================
+
+@app.get("/analytics/advanced")
+def advanced_analytics(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    department: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    # Validate date filters
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date cannot be after end_date",
+        )
+
+    # Base employee query
+    employee_query = db.query(Employee)
+
+    if department:
+        employee_query = employee_query.filter(
+            Employee.department == department
+        )
+
+    employees = employee_query.order_by(Employee.id).all()
+    employee_ids = [employee.id for employee in employees]
+
+    # Empty result when no employees match the department
+    if not employee_ids:
+        return {
+            "filters": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "department": department,
+            },
+            "attendance_trends": [],
+            "leave_trends": [],
+            "performance_insights": {
+                "average_rating": 0,
+                "total_reviews": 0,
+                "rating_distribution": {
+                    "1.0-1.9": 0,
+                    "2.0-2.9": 0,
+                    "3.0-3.9": 0,
+                    "4.0-4.9": 0,
+                    "5.0": 0,
+                },  
+            },
+            "department_reports": [],
+        }
+
+    # ------------------------------------------------------
+    # 1. ATTENDANCE TRENDS
+    # ------------------------------------------------------
+    attendance_query = db.query(
+        Attendance.date,
+        Attendance.status,
+        func.count(Attendance.id).label("total"),
+    ).filter(
+        Attendance.employee_id.in_(employee_ids)
+    )
+
+    if start_date:
+        attendance_query = attendance_query.filter(
+            Attendance.date >= start_date
+        )
+
+    if end_date:
+        attendance_query = attendance_query.filter(
+            Attendance.date <= end_date
+        )
+
+    attendance_rows = attendance_query.group_by(
+        Attendance.date,
+        Attendance.status,
+    ).order_by(
+        Attendance.date
+    ).all()
+
+    attendance_by_date = {}
+
+    for attendance_date, attendance_status, total in attendance_rows:
+        day = attendance_date.isoformat()
+
+        if day not in attendance_by_date:
+            attendance_by_date[day] = {
+                "date": day,
+                "PRESENT": 0,
+                "HALF_DAY": 0,
+                "ABSENT": 0,
+            }
+
+        if attendance_status in attendance_by_date[day]:
+            attendance_by_date[day][attendance_status] = total
+
+    attendance_trends = list(attendance_by_date.values())
+
+    # ------------------------------------------------------
+    # 2. LEAVE TRENDS
+    # Include leave requests overlapping the selected period.
+    # ------------------------------------------------------
+    leave_query = db.query(
+        Leave.start_date,
+        Leave.status,
+        func.count(Leave.id).label("total"),
+    ).filter(
+        Leave.employee_id.in_(employee_ids)
+    )
+
+    if start_date:
+        leave_query = leave_query.filter(
+            Leave.end_date >= start_date
+        )
+
+    if end_date:
+        leave_query = leave_query.filter(
+            Leave.start_date <= end_date
+        )
+
+    leave_rows = leave_query.group_by(
+        Leave.start_date,
+        Leave.status,
+    ).order_by(
+        Leave.start_date
+    ).all()
+
+    leave_by_date = {}
+
+    for leave_date, leave_status, total in leave_rows:
+        day = leave_date.isoformat()
+
+        if day not in leave_by_date:
+            leave_by_date[day] = {
+                "date": day,
+                "PENDING": 0,
+                "APPROVED": 0,
+                "REJECTED": 0,
+            }
+
+        if leave_status in leave_by_date[day]:
+            leave_by_date[day][leave_status] = total
+
+    leave_trends = list(leave_by_date.values())
+
+    # ------------------------------------------------------
+    # 3. EMPLOYEE PERFORMANCE INSIGHTS
+    # ------------------------------------------------------
+    performance_query = db.query(
+        PerformanceReview
+    ).filter(
+        PerformanceReview.employee_id.in_(employee_ids)
+    )
+
+    if start_date:
+        performance_query = performance_query.filter(
+            func.date(PerformanceReview.created_at)
+            >= start_date.isoformat()
+        )
+
+    if end_date:
+        performance_query = performance_query.filter(
+            func.date(PerformanceReview.created_at)
+            <= end_date.isoformat()
+        )
+
+    performance_reviews = performance_query.all()
+
+    total_reviews = len(performance_reviews)
+
+    average_rating = (
+        round(
+            sum(review.rating for review in performance_reviews)
+            / total_reviews,
+            2,
+        )
+        if total_reviews
+        else 0
+    )
+
+    
+    rating_distribution = {
+        "1.0-1.9": 0,
+        "2.0-2.9": 0,
+        "3.0-3.9": 0,
+        "4.0-4.9": 0,
+        "5.0": 0,
+    }
+
+    for review in performance_reviews:
+        rating = review.rating
+
+        if 1 <= rating < 2:
+            rating_distribution["1.0-1.9"] += 1
+        elif 2 <= rating < 3:
+            rating_distribution["2.0-2.9"] += 1
+        elif 3 <= rating < 4:
+            rating_distribution["3.0-3.9"] += 1
+        elif 4 <= rating < 5:
+            rating_distribution["4.0-4.9"] += 1
+        elif rating == 5:
+            rating_distribution["5.0"] += 1
+
+
+    performance_insights = {
+        "average_rating": average_rating,
+        "total_reviews": total_reviews,
+        "rating_distribution": rating_distribution,
+    }
+
+    # ------------------------------------------------------
+    # 4. DEPARTMENT-WISE REPORTS
+    # ------------------------------------------------------
+    department_reports = []
+
+    departments = sorted({
+        employee.department for employee in employees
+    })
+
+    for department_name in departments:
+        department_employees = [
+            employee for employee in employees
+            if employee.department == department_name
+        ]
+
+        department_employee_ids = [
+            employee.id for employee in department_employees
+        ]
+
+        department_attendance_query = db.query(
+            Attendance.status,
+            func.count(Attendance.id),
+        ).filter(
+            Attendance.employee_id.in_(department_employee_ids)
+        )
+
+        if start_date:
+            department_attendance_query = (
+                department_attendance_query.filter(
+                    Attendance.date >= start_date
+                )
+            )
+
+        if end_date:
+            department_attendance_query = (
+                department_attendance_query.filter(
+                    Attendance.date <= end_date
+                )
+            )
+
+        department_attendance_rows = (
+            department_attendance_query.group_by(
+                Attendance.status
+            ).all()
+        )
+
+        attendance_summary = {
+            "PRESENT": 0,
+            "HALF_DAY": 0,
+            "ABSENT": 0,
+        }
+
+        for attendance_status, total in department_attendance_rows:
+            if attendance_status in attendance_summary:
+                attendance_summary[attendance_status] = total
+
+        department_leave_query = db.query(
+            Leave.status,
+            func.count(Leave.id),
+        ).filter(
+            Leave.employee_id.in_(department_employee_ids)
+        )
+
+        if start_date:
+            department_leave_query = department_leave_query.filter(
+                Leave.end_date >= start_date
+            )
+
+        if end_date:
+            department_leave_query = department_leave_query.filter(
+                Leave.start_date <= end_date
+            )
+
+        department_leave_rows = department_leave_query.group_by(
+            Leave.status
+        ).all()
+
+        leave_summary = {
+            "PENDING": 0,
+            "APPROVED": 0,
+            "REJECTED": 0,
+        }
+
+        for leave_status, total in department_leave_rows:
+            if leave_status in leave_summary:
+                leave_summary[leave_status] = total
+
+        department_performance_query = db.query(
+            func.avg(PerformanceReview.rating),
+            func.count(PerformanceReview.id),
+        ).filter(
+            PerformanceReview.employee_id.in_(
+                department_employee_ids
+            )
+        )
+
+        if start_date:
+            department_performance_query = (
+                department_performance_query.filter(
+                    func.date(PerformanceReview.created_at)
+                    >= start_date.isoformat()
+                )
+            )
+
+        if end_date:
+            department_performance_query = (
+                department_performance_query.filter(
+                    func.date(PerformanceReview.created_at)
+                    <= end_date.isoformat()
+                )
+            )
+
+        avg_rating, review_count = (
+            department_performance_query.one()
+        )
+
+        department_reports.append({
+            "department": department_name,
+            "total_employees": len(department_employees),
+            "attendance_summary": attendance_summary,
+            "leave_summary": leave_summary,
+            "average_performance_rating": (
+                round(float(avg_rating), 2)
+                if avg_rating is not None
+                else 0
+            ),
+            "total_performance_reviews": review_count or 0,
+        })
+
+    return {
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "department": department,
+        },
+        "attendance_trends": attendance_trends,
+        "leave_trends": leave_trends,
+        "performance_insights": performance_insights,
+        "department_reports": department_reports,
+    }
+
 
 # ==========================================================
 # MODULE 7: NOTIFICATION APIs
@@ -1762,3 +2648,390 @@ def mark_notification_as_read(
         "id": notification.id,
         "is_read": notification.is_read,
     }
+    
+@app.post("/shifts", response_model=ShiftResponse)
+def create_shift(
+    shift_data: ShiftCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    existing_shift = db.query(Shift).filter(
+        Shift.name == shift_data.name
+    ).first()
+
+    if existing_shift:
+        raise HTTPException(
+            status_code=409,
+            detail="A shift with this name already exists",
+        )
+
+    shift = Shift(
+        name=shift_data.name,
+        start_time=shift_data.start_time,
+        end_time=shift_data.end_time,
+    )
+
+    db.add(shift)
+    db.commit()
+    db.refresh(shift)
+
+    return shift
+
+
+@app.get("/shifts", response_model=list[ShiftResponse])
+def list_shifts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    return db.query(Shift).order_by(Shift.id).all()
+
+
+@app.post(
+    "/employee-shifts",
+    response_model=EmployeeShiftResponse,
+)
+def assign_employee_shift(
+    assignment_data: EmployeeShiftCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    employee = db.query(Employee).filter(
+        Employee.id == assignment_data.employee_id
+    ).first()
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found",
+        )
+
+    shift = db.query(Shift).filter(
+        Shift.id == assignment_data.shift_id
+    ).first()
+
+    if not shift:
+        raise HTTPException(
+            status_code=404,
+            detail="Shift not found",
+        )
+
+    assignment = db.query(EmployeeShift).filter(
+        EmployeeShift.employee_id == assignment_data.employee_id
+    ).first()
+
+    if assignment:
+        assignment.shift_id = assignment_data.shift_id
+    else:
+        assignment = EmployeeShift(
+            employee_id=assignment_data.employee_id,
+            shift_id=assignment_data.shift_id,
+        )
+        db.add(assignment)
+
+    db.commit()
+    db.refresh(assignment)
+
+    return assignment
+
+@app.get(
+    "/employee-shifts",
+    response_model=list[EmployeeShiftResponse],
+)
+def list_employee_shifts(
+    employee_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    query = db.query(EmployeeShift)
+
+    if employee_id is not None:
+        if employee_id <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="employee_id must be greater than zero",
+            )
+
+        query = query.filter(
+            EmployeeShift.employee_id == employee_id
+        )
+
+    return query.order_by(EmployeeShift.employee_id).all()
+
+# ==========================================================
+# MODULE 16: DOCUMENT MANAGEMENT
+# ==========================================================
+
+
+ALLOWED_DOCUMENT_EXTENSIONS = {
+    ".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx"
+}
+MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def get_employee_for_document_access(
+    current_user: User,
+    db: Session,
+    employee_id: int | None = None,
+) -> Employee:
+    """Resolve the employee and enforce document access permissions."""
+
+    if current_user.role == "EMPLOYEE":
+        employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id
+        ).first()
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee profile not found."
+            )
+
+        if employee_id is not None and employee.id != employee_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can access only your own documents."
+            )
+
+        return employee
+
+    if current_user.role in {"HR", "ADMIN"}:
+        if employee_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="employee_id is required for HR/Admin access."
+            )
+
+        employee = db.query(Employee).filter(
+            Employee.id == employee_id
+        ).first()
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found."
+            )
+
+        return employee
+
+    raise HTTPException(
+        status_code=403,
+        detail="You do not have permission to access documents."
+    )
+
+
+@app.post("/documents/upload", response_model=DocumentResponse)
+async def upload_employee_document(
+    employee_id: int | None = None,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee = get_employee_for_document_access(
+        current_user=current_user,
+        db=db,
+        employee_id=employee_id,
+    )
+
+    original_name = Path(file.filename or "").name
+    extension = Path(original_name).suffix.lower()
+
+    if not original_name or extension not in ALLOWED_DOCUMENT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Upload PDF, PNG, JPG, DOC, or DOCX."
+        )
+
+    stored_name = f"{uuid.uuid4().hex}{extension}"
+    destination = DOCUMENTS_DIR / stored_name
+    size = 0
+
+    try:
+        with destination.open("wb") as output:
+            while True:
+                chunk = await file.read(1024 * 1024)
+
+                if not chunk:
+                    break
+
+                size += len(chunk)
+
+                if size > MAX_DOCUMENT_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File size exceeds the 10 MB limit."
+                    )
+
+                output.write(chunk)
+
+        document = Document(
+            employee_id=employee.id,
+            file_name=original_name,
+            file_url=stored_name,
+        )
+
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+
+        return document
+
+    except Exception:
+        if destination.exists():
+            destination.unlink()
+        db.rollback()
+        raise
+
+    finally:
+        await file.close()
+
+
+@app.get("/documents", response_model=list[DocumentResponse])
+def list_employee_documents(
+    employee_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee = get_employee_for_document_access(
+        current_user=current_user,
+        db=db,
+        employee_id=employee_id,
+    )
+
+    return (
+        db.query(Document)
+        .filter(Document.employee_id == employee.id)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+
+
+@app.get("/documents/{document_id}/download")
+def download_employee_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    document = db.query(Document).filter(
+        Document.id == document_id
+    ).first()
+
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    get_employee_for_document_access(
+        current_user=current_user,
+        db=db,
+        employee_id=document.employee_id,
+    )
+
+    stored_name = Path(document.file_url).name
+    file_path = DOCUMENTS_DIR / stored_name
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Stored document file not found."
+        )
+
+    return FileResponse(
+        path=file_path,
+        filename=document.file_name,
+        media_type="application/octet-stream",
+    )
+    
+
+# ==========================================================
+# MODULE 17: PERFORMANCE MANAGEMENT
+# ==========================================================
+
+
+# HR / ADMIN: Add a performance review
+@app.post(
+    "/performance-reviews",
+    response_model=PerformanceReviewResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def create_performance_review(
+    data: PerformanceReviewCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    employee = db.query(Employee).filter(
+        Employee.id == data.employee_id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+
+    review = PerformanceReview(
+        employee_id=data.employee_id,
+        review_period=data.review_period.strip(),
+        rating=data.rating,
+        feedback=data.feedback.strip()
+    )
+
+    if not review.review_period or not review.feedback:
+        raise HTTPException(
+            status_code=422,
+            detail="Review period and feedback cannot be empty"
+        )
+
+    try:
+        db.add(review)
+        db.commit()
+        db.refresh(review)
+        return review
+    except Exception:
+        db.rollback()
+        raise
+
+
+# HR / ADMIN: View all reviews, optionally filtered by employee
+@app.get(
+    "/performance-reviews",
+    response_model=list[PerformanceReviewResponse]
+)
+def list_performance_reviews(
+    employee_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN"))
+):
+    query = db.query(PerformanceReview)
+
+    if employee_id is not None:
+        query = query.filter(
+            PerformanceReview.employee_id == employee_id
+        )
+
+    return query.order_by(
+        PerformanceReview.created_at.desc()
+    ).all()
+
+
+# EMPLOYEE: View only their own performance reviews
+@app.get(
+    "/performance-reviews/me",
+    response_model=list[PerformanceReviewResponse]
+)
+def get_my_performance_reviews(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE"))
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Your employee profile has not been created"
+        )
+
+    return db.query(PerformanceReview).filter(
+        PerformanceReview.employee_id == employee.id
+    ).order_by(
+        PerformanceReview.created_at.desc()
+    ).all()
