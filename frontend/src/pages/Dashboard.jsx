@@ -442,6 +442,78 @@ export default function Dashboard() {
             </section>
 
             <section className="workspace-card">
+              <div className="attendance-icon">📋</div>
+              <div className="workspace-content">
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
+                <h2>My Tasks</h2>
+                <p>View assigned tasks, deadlines, and update your progress.</p>
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/tasks")}
+                >
+                  View My Tasks <span>→</span>
+                </button>
+              </div>
+              <div className="workspace-decoration">W</div>
+            </section>
+
+            
+            {/* MODULE 23: ANNOUNCEMENTS */}
+            <section className="workspace-card">
+              <div className="attendance-icon">📢</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
+
+                <h2>Announcements</h2>
+
+                <p>
+                  View company announcements, important notices,
+                  and organizational updates.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/announcements")}
+                >
+                  View Announcements <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+
+            
+            {/* MODULE 22: Resignation & Exit */}
+            <section className="workspace-card">
+              <div className="attendance-icon">📋</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">
+                  EMPLOYEE SERVICE
+                </span>
+
+                <h2>Resignation & Exit</h2>
+
+                <p>
+                  Submit your resignation, provide your notice period,
+                  and track your exit request status.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/resignation")}
+                >
+                  Manage Resignation <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+
+            <section className="workspace-card">
               <div className="attendance-icon">◷</div>
               <div className="workspace-content">
                 <span className="workspace-tag">EMPLOYEE SERVICE</span>
@@ -545,6 +617,33 @@ export default function Dashboard() {
               <div className="workspace-decoration">W</div>
             </section>
 
+            
+            {/* MODULE 21: Employee Onboarding */}
+            <section className="workspace-card">
+              <div className="attendance-icon">🎯</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">EMPLOYEE SERVICE</span>
+
+                <h2>Employee Onboarding</h2>
+
+                <p>
+                  View your onboarding checklist, track your progress,
+                  check task due dates, and mark assigned tasks as completed.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/onboarding")}
+                >
+                  Open Onboarding <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+
             {/* MODULE 17: My Performance Reviews */}
             <section className="workspace-card">
               <div className="attendance-icon">⭐</div>
@@ -566,6 +665,8 @@ export default function Dashboard() {
             </section>
           </>
         )}
+
+        
 
         {/* Admin-only services */}
         {isAdmin && (
@@ -612,6 +713,100 @@ export default function Dashboard() {
               <div className="attendance-icon">📋</div>
               <div className="workspace-content">
                 <span className="workspace-tag">HR / ADMIN SERVICE</span>
+                <h2>Task Management</h2>
+                <p>Assign employee tasks and monitor completion progress.</p>
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/tasks")}
+                >
+                  Manage Tasks <span>→</span>
+                </button>
+              </div>
+              <div className="workspace-decoration">W</div>
+            </section>
+
+            
+            {/* MODULE 21: Onboarding Management - HR / ADMIN */}
+            {(isHR || isAdmin) && (
+              <section className="workspace-card">
+                <div className="attendance-icon">🎯</div>
+
+                <div className="workspace-content">
+                  <span className="workspace-tag">HR MANAGEMENT</span>
+
+                  <h2>Onboarding Management</h2>
+
+                  <p>
+                    Assign onboarding tasks, set due dates, and monitor
+                    employee task completion.
+                  </p>
+
+                  <button
+                    className="attendance-btn"
+                    onClick={() => navigate("/onboarding-management")}
+                  >
+                    Manage Onboarding <span>→</span>
+                  </button>
+                </div>
+
+                <div className="workspace-decoration">W</div>
+              </section>
+            )}
+
+            
+            <section className="workspace-card">
+              <div className="attendance-icon">🔗</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">HR / ADMIN SERVICE</span>
+                <h2>Third-Party Integrations</h2>
+                <p>
+                  Test email notifications, export employee reports,
+                  and export tasks to your calendar.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/integrations")}
+                >
+                  Open Integrations <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+            {/* MODULE 22: Resignation Management - HR / ADMIN */}
+            <section className="workspace-card">
+              <div className="attendance-icon">📋</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">HR MANAGEMENT</span>
+
+                <h2>Resignation Management</h2>
+
+                <p>
+                  Review employee resignation requests, approve or reject
+                  them, and track exit status.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/resignation-management")}
+                >
+                  Manage Resignations <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+
+
+            <section className="workspace-card">
+              <div className="attendance-icon">📋</div>
+              <div className="workspace-content">
+                <span className="workspace-tag">HR / ADMIN SERVICE</span>
                 <h2>Manage Leave Requests</h2>
                 <p>
                   View employee leave applications, filter requests by
@@ -627,6 +822,80 @@ export default function Dashboard() {
               <div className="workspace-decoration">W</div>
             </section>
 
+            <div
+              className="workspace-card"
+              onClick={() => navigate("/feedback")}
+              role="link"
+              tabIndex={0}
+            >
+              <div className="workspace-content">
+                <div className="attendance-icon">💬</div>
+                <h3>Employee Feedback</h3>
+                <p>
+                  {user?.role === "EMPLOYEE"
+                    ? "Share your feedback and rate your experience."
+                    : "Review employee feedback and ratings."}
+                </p>
+                <span className="workspace-tag">
+                  Feedback System
+                </span>
+              </div>
+            </div>
+
+                        
+            {/* MODULE 23: ANNOUNCEMENTS */}
+            <section className="workspace-card">
+              <div className="attendance-icon">📢</div>
+
+              <div className="workspace-content">
+                <span className="workspace-tag">HR / ADMIN SERVICE</span>
+
+                <h2>Announcements</h2>
+
+                <p>
+                  Publish and view important company announcements
+                  and organization-wide updates.
+                </p>
+
+                <button
+                  className="attendance-btn"
+                  onClick={() => navigate("/announcements")}
+                >
+                  View Announcements <span>→</span>
+                </button>
+              </div>
+
+              <div className="workspace-decoration">W</div>
+            </section>
+
+            <div
+              className="workspace-card"
+              onClick={() => navigate("/profile-settings")}
+              role="link"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate("/profile-settings");
+                }
+              }}
+            >
+              <div className="workspace-content">
+                <div className="attendance-icon">⚙️</div>
+
+                <h3>Profile & Settings</h3>
+
+                <p>
+                  Manage your personal details, password,
+                  and notification preferences.
+                </p>
+
+                <span className="workspace-tag">
+                  Account Settings
+                </span>
+              </div>
+            </div>
+            
             <section className="workspace-card">
               <div className="attendance-icon">💰</div>
               <div className="workspace-content">

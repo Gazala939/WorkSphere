@@ -36,6 +36,24 @@ import PerformanceReviews from "./pages/PerformanceReviews";
 
 import AdvancedReports from "./pages/AdvancedReports";
 
+import Onboarding from "./pages/Onboarding";
+
+import OnboardingManagement from "./pages/OnboardingManagement";
+
+import Resignation from "./pages/Resignation";
+import ResignationManagement from "./pages/ResignationManagement";
+
+import Announcements from "./pages/Announcements";
+import AnnouncementDetail from "./pages/AnnouncementDetail";
+
+import Tasks from "./pages/Tasks";
+
+import Integrations from "./pages/Integrations";
+
+import Feedback from "./pages/Feedback";
+
+import ProfileSettings from "./pages/ProfileSettings";
+
 function DashboardRedirect() {
   const { user } = useAuth();
 
@@ -276,6 +294,95 @@ function AppRoutes() {
         }
       />
 
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE"]}>
+            <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/onboarding-management"
+        element={
+          <ProtectedRoute roles={["HR", "ADMIN"]}>
+            <OnboardingManagement />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/resignation"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE"]}>
+            <Resignation />
+          </ProtectedRoute>
+        }
+      />
+      
+      <Route
+        path="/resignation-management"
+        element={
+          <ProtectedRoute roles={["HR", "ADMIN"]}>
+            <ResignationManagement />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/announcements"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <Announcements />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/announcements/:id"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <AnnouncementDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <Tasks />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/integrations"
+        element={
+          <ProtectedRoute roles={["HR", "ADMIN"]}>
+            <Integrations />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/feedback"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <Feedback />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile-settings"
+        element={
+          <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
+            <ProfileSettings />
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

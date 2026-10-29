@@ -1,27 +1,35 @@
 import os
 import uuid
 from pathlib import Path
+from io import StringIO, BytesIO
+import csv
 
 from fastapi import UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
+from typing import List
 
+from schemas import PasswordChangeRequest
+from security import verify_password, hash_password
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Depends, HTTPException, status,Query
 from fastapi.middleware.cors import CORSMiddleware
+
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
 from sqlalchemy.exc import IntegrityError
 
 from apscheduler.schedulers.background import BackgroundScheduler
-
+from email_service import send_email
 from database import Base,SessionLocal, engine, get_db
 from models import (
     User,
     Employee,
+    Task,
     Attendance,
+    Announcement,
     Leave,
     Payroll,
     Notification,
@@ -32,7 +40,12 @@ from models import (
     Employee,
     Document,
     Document,
-    PerformanceReview
+    PerformanceReview,
+    Onboarding,
+    Resignation,
+    Feedback,
+    NotificationPreference
+   
 )
 from schemas import (
     RegisterRequest,
@@ -61,12 +74,32 @@ from schemas import (
     ShiftResponse,
     EmployeeShiftCreate,
     EmployeeShiftResponse,
+    EmailTestRequest,
     LeaveCalendarItem,
     TeamAvailabilityItem,
     DocumentResponse,
     PerformanceReviewCreate,
     PerformanceReviewResponse,
+    OnboardingCreate,
+    OnboardingStatusUpdate,
+    OnboardingResponse,
+    ResignationCreate,
+    ResignationDecision,
+    ResignationResponse,
+    AnnouncementCreate,
+    AnnouncementResponse,
+    TaskCreate, TaskStatusUpdate, TaskResponse,
+    FeedbackCreate, FeedbackResponse,
+    ProfileUpdate,
+    ProfileResponse,
+    NotificationPreferenceUpdate,
+    NotificationPreferenceResponse,
 )
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from security import (
     hash_password,
     verify_password,
@@ -3035,3 +3068,1060 @@ def get_my_performance_reviews(
     ).order_by(
         PerformanceReview.created_at.desc()
     ).all()
+
+
+# ==========================================================
+# MODULE 21: EMPLOYEE ONBOARDING
+# ==========================================================
+
+# HR / ADMIN: Assign an onboarding task to an employee
+@app.post(
+    "/onboarding",
+    response_model=OnboardingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_onboarding_task(
+    data: OnboardingCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    employee = db.query(Employee).filter(
+        Employee.id == data.employee_id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found",
+        )
+
+    task = Onboarding(
+        employee_id=data.employee_id,
+        task_name=data.task_name.strip(),
+        status="PENDING",
+        due_date=data.due_date,
+    )
+
+    if not task.task_name:
+        raise HTTPException(
+            status_code=422,
+            detail="Task name cannot be empty",
+        )
+
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # Send an email notification when possible.
+    # Email failure must not undo a successfully assigned task.
+    try:
+        employee_account = db.query(User).filter(
+            User.id == employee.user_id
+        ).first()
+
+        employee_email = (
+            getattr(employee_account, "email", None)
+            if employee_account
+            else None
+        )
+
+        if employee_email:
+            send_email(
+                to_email=employee_email,
+                subject=f"New WorkSphere Task: {task.title}",
+                body=(
+                    f"Hello {getattr(employee, 'full_name', 'Employee')},\n\n"
+                    f"A new task has been assigned to you.\n\n"
+                    f"Task: {task.title}\n"
+                    f"Description: {task.description}\n"
+                    f"Due date: {task.due_date}\n\n"
+                    "Please log in to WorkSphere HRMS to review your task."
+                )
+            )
+    except Exception:
+        # SMTP may be unconfigured or temporarily unavailable.
+        # Keep the task assignment successful.
+        pass
+
+    return task
+
+# HR / ADMIN: View all onboarding tasks
+@app.get(
+    "/onboarding",
+    response_model=list[OnboardingResponse],
+)
+def list_onboarding_tasks(
+    employee_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    query = db.query(Onboarding)
+
+    if employee_id is not None:
+        query = query.filter(
+            Onboarding.employee_id == employee_id
+        )
+
+    return query.order_by(
+        Onboarding.due_date,
+        Onboarding.id,
+    ).all()
+
+
+# EMPLOYEE: View own onboarding checklist
+@app.get(
+    "/onboarding/me",
+    response_model=list[OnboardingResponse],
+)
+def get_my_onboarding_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE")),
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found",
+        )
+
+    return db.query(Onboarding).filter(
+        Onboarding.employee_id == employee.id
+    ).order_by(
+        Onboarding.due_date,
+        Onboarding.id,
+    ).all()
+
+
+# EMPLOYEE: View onboarding progress
+@app.get("/onboarding/me/progress")
+def get_my_onboarding_progress(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE")),
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found",
+        )
+
+    tasks = db.query(Onboarding).filter(
+        Onboarding.employee_id == employee.id
+    ).all()
+
+    total_tasks = len(tasks)
+    completed_tasks = sum(
+        1 for task in tasks
+        if task.status == "COMPLETED"
+    )
+    pending_tasks = total_tasks - completed_tasks
+
+    progress_percentage = (
+        round(completed_tasks / total_tasks * 100, 2)
+        if total_tasks > 0
+        else 0
+    )
+
+    return {
+        "employee_id": employee.id,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "pending_tasks": pending_tasks,
+        "progress_percentage": progress_percentage,
+    }
+
+
+# EMPLOYEE: Update own task status
+# HR / ADMIN: Update any onboarding task status
+@app.patch(
+    "/onboarding/{task_id}/status",
+    response_model=OnboardingResponse,
+)
+def update_onboarding_status(
+    task_id: int,
+    data: OnboardingStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Onboarding).filter(
+        Onboarding.id == task_id
+    ).first()
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Onboarding task not found",
+        )
+
+    if current_user.role == "EMPLOYEE":
+        employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id
+        ).first()
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee profile not found",
+            )
+
+        if task.employee_id != employee.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can update only your own onboarding tasks",
+            )
+
+    elif current_user.role not in ("HR", "ADMIN"):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to update onboarding tasks",
+        )
+
+    task.status = data.status
+
+    db.commit()
+    db.refresh(task)
+
+    return task
+
+
+# ==========================================================
+# MODULE 22: RESIGNATION & EXIT MANAGEMENT
+# ==========================================================
+
+
+# EMPLOYEE: Submit resignation
+@app.post(
+    "/resignations",
+    response_model=ResignationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_resignation(
+    data: ResignationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE")),
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found",
+        )
+
+    # Prevent multiple pending resignation requests
+    existing = db.query(Resignation).filter(
+        Resignation.employee_id == employee.id,
+        Resignation.status == "PENDING",
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="You already have a pending resignation request",
+        )
+
+    reason = data.reason.strip()
+
+    if not reason:
+        raise HTTPException(
+            status_code=422,
+            detail="Resignation reason cannot be empty",
+        )
+
+    resignation = Resignation(
+        employee_id=employee.id,
+        reason=reason,
+        notice_period=data.notice_period,
+        status="PENDING",
+    )
+
+    db.add(resignation)
+    db.commit()
+    db.refresh(resignation)
+
+    return resignation
+
+
+# EMPLOYEE: View own resignation requests
+@app.get(
+    "/resignations/me",
+    response_model=list[ResignationResponse],
+)
+def get_my_resignations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYEE")),
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found",
+        )
+
+    return db.query(Resignation).filter(
+        Resignation.employee_id == employee.id
+    ).order_by(
+        Resignation.created_at.desc(),
+        Resignation.id.desc(),
+    ).all()
+
+
+# HR / ADMIN: View all resignation requests
+@app.get(
+    "/resignations",
+    response_model=list[ResignationResponse],
+)
+def get_all_resignations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    return db.query(Resignation).order_by(
+        Resignation.created_at.desc(),
+        Resignation.id.desc(),
+    ).all()
+
+
+# HR / ADMIN: Approve or reject a resignation
+@app.patch(
+    "/resignations/{resignation_id}/decision",
+    response_model=ResignationResponse,
+)
+def decide_resignation(
+    resignation_id: int,
+    data: ResignationDecision,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("HR", "ADMIN")),
+):
+    resignation = db.query(Resignation).filter(
+        Resignation.id == resignation_id
+    ).first()
+
+    if resignation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Resignation request not found",
+        )
+
+    if resignation.status != "PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail="This resignation request has already been reviewed",
+        )
+
+    resignation.status = data.status
+
+    db.commit()
+    db.refresh(resignation)
+
+    return resignation
+
+# MODULE 23: INTERNAL ANNOUNCEMENTS SYSTEM
+
+
+@app.post(
+    "/announcements",
+    response_model=AnnouncementResponse,
+    status_code=201,
+)
+def create_announcement(
+    announcement_data: AnnouncementCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role("HR", "ADMIN")
+    ),
+):
+    title = announcement_data.title.strip()
+    message = announcement_data.message.strip()
+
+    if not title or not message:
+        raise HTTPException(
+            status_code=422,
+            detail="Title and message cannot be empty.",
+        )
+
+    announcement = Announcement(
+        title=title,
+        message=message,
+        created_by=current_user.id,
+    )
+
+    db.add(announcement)
+    db.commit()
+    db.refresh(announcement)
+
+    return announcement
+
+
+@app.get(
+    "/announcements",
+    response_model=list[AnnouncementResponse],
+)
+def get_announcements(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    announcements = (
+        db.query(Announcement)
+        .order_by(Announcement.created_at.desc())
+        .all()
+    )
+
+    return announcements
+
+
+@app.get(
+    "/announcements/{announcement_id}",
+    response_model=AnnouncementResponse,
+)
+def get_announcement_detail(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    announcement = (
+        db.query(Announcement)
+        .filter(Announcement.id == announcement_id)
+        .first()
+    )
+
+    if announcement is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Announcement not found.",
+        )
+
+    return announcement
+
+
+
+# MODULE 24: CREATE AND ASSIGN A TASK
+@app.post(
+    "/tasks",
+    response_model=TaskResponse,
+    status_code=201
+)
+def create_task(
+    task_data: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("HR", "ADMIN"))
+):
+    employee = db.query(Employee).filter(
+        Employee.id == task_data.assigned_to
+    ).first()
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+
+    task = Task(
+        assigned_to=task_data.assigned_to,
+        title=task_data.title.strip(),
+        description=task_data.description.strip(),
+        due_date=task_data.due_date,
+        status="PENDING"
+    )
+
+    if not task.title or not task.description:
+        raise HTTPException(
+            status_code=422,
+            detail="Title and description cannot be blank"
+        )
+
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    return task
+
+
+# MODULE 24: VIEW TASKS
+@app.get("/tasks", response_model=List[TaskResponse])
+def get_tasks(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    if current_user.role in ["ADMIN", "HR"]:
+        return db.query(Task).order_by(Task.due_date.asc()).all()
+
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found"
+        )
+
+    return db.query(Task).filter(
+        Task.assigned_to == employee.id
+    ).order_by(Task.due_date.asc()).all()
+
+
+# MODULE 24: UPDATE TASK STATUS
+@app.patch(
+    "/tasks/{task_id}/status",
+    response_model=TaskResponse
+)
+def update_task_status(
+    task_id: int,
+    status_data: TaskStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    task = db.query(Task).filter(
+        Task.id == task_id
+    ).first()
+
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    # HR/Admin can update any task.
+    # Employees can update only their own tasks.
+    if current_user.role not in ["ADMIN", "HR"]:
+        employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id
+        ).first()
+
+        if not employee or task.assigned_to != employee.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You cannot update this task"
+            )
+
+    task.status = status_data.status
+
+    db.commit()
+    db.refresh(task)
+
+    return task
+
+
+# MODULE 25: TEST EMAIL INTEGRATION
+
+@app.post("/integrations/email/test")
+def test_email_integration(
+    data: EmailTestRequest,
+    current_user=Depends(require_role("HR", "ADMIN"))
+):
+    try:
+        send_email(
+            to_email=data.email,
+            subject="WorkSphere HRMS - Email Integration Test",
+            body=(
+                "Hello,\n\n"
+                "This is a test email from WorkSphere HRMS.\n"
+                "Your email integration is working.\n\n"
+                "Regards,\nWorkSphere HRMS"
+            )
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Email could not be sent. Check SMTP configuration "
+                "in your backend .env file."
+            )
+        )
+
+    return {"message": "Test email sent successfully."}
+
+
+# MODULE 25: EXPORT EMPLOYEE REPORT AS CSV
+
+@app.get("/reports/employees.csv")
+def export_employees_csv(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("HR", "ADMIN"))
+):
+    employees = db.query(Employee).order_by(Employee.id).all()
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "Employee ID",
+        "Full Name",
+        "Designation",
+        "Department",
+        "Status",
+        "Joining Date",
+        "Salary"
+    ])
+
+    for employee in employees:
+        writer.writerow([
+            employee.id,
+            getattr(employee, "full_name", ""),
+            getattr(employee, "designation", ""),
+            getattr(employee, "department", ""),
+            getattr(employee, "status", ""),
+            str(getattr(employee, "joining_date", "") or ""),
+            str(getattr(employee, "salary", "") or "")
+        ])
+
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="worksphere_employees.csv"'
+        }
+    )
+
+
+# MODULE 25: EXPORT EMPLOYEE REPORT AS PDF
+
+@app.get("/reports/employees.pdf")
+def export_employees_pdf(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("HR", "ADMIN"))
+):
+    employees = db.query(Employee).order_by(Employee.id).all()
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=24,
+        leftMargin=24,
+        topMargin=30,
+        bottomMargin=30
+    )
+
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph("WorkSphere HRMS - Employee Report", styles["Title"])
+    ]
+
+    rows = [[
+        "ID", "Full Name", "Designation", "Department",
+        "Status", "Joining Date", "Salary"
+    ]]
+
+    for employee in employees:
+        rows.append([
+            str(employee.id),
+            str(getattr(employee, "full_name", "") or ""),
+            str(getattr(employee, "designation", "") or ""),
+            str(getattr(employee, "department", "") or ""),
+            str(getattr(employee, "status", "") or ""),
+            str(getattr(employee, "joining_date", "") or ""),
+            str(getattr(employee, "salary", "") or "")
+        ])
+
+    table = Table(
+        rows,
+        repeatRows=1,
+        colWidths=[35, 115, 100, 95, 65, 85, 70]
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d4ed8")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
+            colors.white, colors.HexColor("#eff6ff")
+        ]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+
+    elements.append(table)
+    document.build(elements)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="worksphere_employees.pdf"'
+        }
+    )
+
+
+# MODULE 25: EXPORT TASKS TO CALENDAR
+
+def escape_ics(value):
+    return (
+        str(value or "")
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+    )
+
+
+@app.get("/integrations/calendar/ics")
+def export_tasks_calendar(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    if current_user.role in ["ADMIN", "HR"]:
+        tasks = db.query(Task).order_by(Task.due_date).all()
+    else:
+        employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id
+        ).first()
+
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee profile not found"
+            )
+
+        tasks = db.query(Task).filter(
+            Task.assigned_to == employee.id
+        ).order_by(Task.due_date).all()
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//WorkSphere HRMS//Task Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH"
+    ]
+
+    for task in tasks:
+        due = task.due_date
+        if isinstance(due, datetime):
+            due = due.date()
+
+        if not isinstance(due, date):
+            continue
+
+        start_date = due.strftime("%Y%m%d")
+        end_date = (due + timedelta(days=1)).strftime("%Y%m%d")
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:worksphere-task-{task.id}@hrms",
+            f"DTSTAMP:{timestamp}",
+            f"DTSTART;VALUE=DATE:{start_date}",
+            f"DTEND;VALUE=DATE:{end_date}",
+            f"SUMMARY:{escape_ics(task.title)}",
+            f"DESCRIPTION:{escape_ics(task.description)}",
+            "END:VEVENT"
+        ])
+
+    lines.append("END:VCALENDAR")
+    calendar_content = "\r\n".join(lines) + "\r\n"
+
+    return Response(
+        content=calendar_content,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="worksphere_tasks.ics"'
+        }
+    )
+
+
+
+@app.post(
+    "/feedback",
+    response_model=FeedbackResponse,
+    status_code=201
+)
+def submit_feedback(
+    feedback_data: FeedbackCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("EMPLOYEE"))
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found"
+        )
+
+    feedback = Feedback(
+        employee_id=employee.id,
+        message=feedback_data.message.strip(),
+        rating=feedback_data.rating
+    )
+
+    if not feedback.message:
+        raise HTTPException(
+            status_code=422,
+            detail="Feedback message cannot be empty"
+        )
+
+    db.add(feedback)
+    db.commit()
+    db.refresh(feedback)
+
+    return feedback
+
+
+@app.get(
+    "/feedback",
+    response_model=List[FeedbackResponse]
+)
+def get_all_feedback(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("HR", "ADMIN"))
+):
+    feedback_list = (
+        db.query(Feedback)
+        .order_by(Feedback.created_at.desc())
+        .all()
+    )
+
+    return feedback_list
+
+
+
+# ==========================================================
+# MODULE 27: PROFILE & SETTINGS MANAGEMENT
+# ==========================================================
+
+from sqlalchemy.exc import IntegrityError
+
+
+# VIEW OWN PROFILE
+@app.get("/profile", response_model=ProfileResponse)
+def get_my_profile(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+        "role": current_user.role,
+        "full_name": employee.full_name if employee else None,
+        "designation": employee.designation if employee else None,
+        "department": employee.department if employee else None,
+    }
+
+
+# UPDATE OWN PROFILE
+@app.patch("/profile", response_model=ProfileResponse)
+def update_my_profile(
+    profile_data: ProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    updates = profile_data.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide at least one field to update"
+        )
+
+    if all(value is None for value in updates.values()):
+        raise HTTPException(
+            status_code=422,
+            detail="Profile fields cannot all be null"
+        )
+
+    if "username" in updates and updates["username"] is not None:
+        updates["username"] = updates["username"].strip()
+
+        if len(updates["username"]) < 3:
+            raise HTTPException(
+                status_code=422,
+                detail="Username must contain at least 3 characters"
+            )
+
+        existing_user = db.query(User).filter(
+            User.username == updates["username"],
+            User.id != current_user.id
+        ).first()
+
+        if existing_user:
+            raise HTTPException(
+                status_code=409,
+                detail="Username is already in use"
+            )
+
+    if "email" in updates and updates["email"] is not None:
+        existing_user = db.query(User).filter(
+            User.email == str(updates["email"]),
+            User.id != current_user.id
+        ).first()
+
+        if existing_user:
+            raise HTTPException(
+                status_code=409,
+                detail="Email is already in use"
+            )
+
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id
+    ).first()
+
+    full_name = updates.pop("full_name", None)
+    update_full_name = "full_name" in profile_data.model_fields_set
+
+    try:
+        for field, value in updates.items():
+            setattr(current_user, field, value)
+
+        if update_full_name:
+            if not employee:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Employee profile not found"
+                )
+
+            if full_name is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Full name cannot be null"
+                )
+
+            employee.full_name = full_name.strip()
+
+        db.commit()
+        db.refresh(current_user)
+
+        if employee:
+            db.refresh(employee)
+
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Username or email is already in use"
+        )
+
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+        "role": current_user.role,
+        "full_name": employee.full_name if employee else None,
+        "designation": employee.designation if employee else None,
+        "department": employee.department if employee else None,
+    }
+
+
+# GET NOTIFICATION PREFERENCES
+@app.get(
+    "/settings/notifications",
+    response_model=NotificationPreferenceResponse
+)
+def get_notification_preferences(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    preferences = db.query(NotificationPreference).filter(
+        NotificationPreference.user_id == current_user.id
+    ).first()
+
+    if not preferences:
+        preferences = NotificationPreference(
+            user_id=current_user.id
+        )
+        db.add(preferences)
+        db.commit()
+        db.refresh(preferences)
+
+    return preferences
+
+
+# UPDATE NOTIFICATION PREFERENCES
+@app.put(
+    "/settings/notifications",
+    response_model=NotificationPreferenceResponse
+)
+def update_notification_preferences(
+    preference_data: NotificationPreferenceUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    preferences = db.query(NotificationPreference).filter(
+        NotificationPreference.user_id == current_user.id
+    ).first()
+
+    if not preferences:
+        preferences = NotificationPreference(
+            user_id=current_user.id
+        )
+        db.add(preferences)
+        db.flush()
+
+    updates = preference_data.model_dump()
+
+    for field, value in updates.items():
+        setattr(preferences, field, value)
+
+    db.commit()
+    db.refresh(preferences)
+
+    return preferences
+
+
+# CHANGE PASSWORD
+@app.post("/profile/change-password")
+def change_my_password(
+    password_data: PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    # Step 1: Verify the current password
+    if not verify_password(
+        password_data.current_password,
+        current_user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Current password is incorrect"
+        )
+
+    # Step 2: Prevent using the same password again
+    if verify_password(
+        password_data.new_password,
+        current_user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from the current password"
+        )
+
+    # Step 3: Hash the new password
+    current_user.hashed_password = hash_password(
+        password_data.new_password
+    )
+
+    # Step 4: Save the updated password
+    db.commit()
+
+    return {
+        "message": "Password changed successfully. Please log in again."
+    }

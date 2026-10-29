@@ -316,3 +316,177 @@ class PerformanceReviewResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+
+# ==========================================================
+# MODULE 21: EMPLOYEE ONBOARDING SCHEMAS
+# ==========================================================
+
+class OnboardingCreate(BaseModel):
+    employee_id: int = Field(gt=0)
+    task_name: str = Field(min_length=3, max_length=200)
+    due_date: date
+
+
+class OnboardingStatusUpdate(BaseModel):
+    status: Literal["PENDING", "COMPLETED"]
+
+
+class OnboardingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_id: int
+    task_name: str
+    status: Literal["PENDING", "COMPLETED"]
+    due_date: date
+
+
+# ==========================================================
+# MODULE 22: RESIGNATION & EXIT MANAGEMENT
+# ==========================================================
+
+
+
+class ResignationCreate(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+    notice_period: int = Field(ge=0, le=365)
+
+
+class ResignationDecision(BaseModel):
+    status: Literal["APPROVED", "REJECTED"]
+
+
+class ResignationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_id: int
+    reason: str
+    notice_period: int
+    status: Literal["PENDING", "APPROVED", "REJECTED"]
+    created_at: datetime
+
+
+class AnnouncementCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=10000)
+
+
+class AnnouncementResponse(BaseModel):
+    id: int
+    title: str
+    message: str
+    created_by: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+    
+
+class TaskCreate(BaseModel):
+    assigned_to: int
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1)
+    due_date: date
+
+
+class TaskStatusUpdate(BaseModel):
+    status: Literal["PENDING", "COMPLETED"]
+
+
+class TaskResponse(BaseModel):
+    id: int
+    assigned_to: int
+    title: str
+    description: str
+    due_date: date
+    status: Literal["PENDING", "COMPLETED"]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmailTestRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+
+class FeedbackCreate(BaseModel):
+    message: str = Field(min_length=3, max_length=2000)
+    rating: int = Field(ge=1, le=5)
+
+
+class FeedbackResponse(BaseModel):
+    id: int
+    employee_id: int
+    message: str
+    rating: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================================
+# MODULE 27: PROFILE & SETTINGS MANAGEMENT
+# ==========================================================
+
+# Update permitted user account details
+class ProfileUpdate(BaseModel):
+    username: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=50
+    )
+
+    email: EmailStr | None = None
+
+    full_name: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=100
+    )
+
+
+# Return account and employee profile details
+class ProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    email: EmailStr
+    role: Literal["EMPLOYEE", "HR", "ADMIN"]
+    full_name: str | None = None
+    designation: str | None = None
+    department: str | None = None
+
+
+# Change password
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(
+        min_length=1,
+        max_length=128
+    )
+
+    new_password: str = Field(
+        min_length=8,
+        max_length=128
+    )
+
+
+# Update notification preferences
+class NotificationPreferenceUpdate(BaseModel):
+    attendance_alerts: bool = True
+    leave_updates: bool = True
+    announcements: bool = True
+    task_updates: bool = True
+
+
+# Return notification preferences
+class NotificationPreferenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    attendance_alerts: bool
+    leave_updates: bool
+    announcements: bool
+    task_updates: bool
+    updated_at: datetime

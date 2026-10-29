@@ -5,6 +5,7 @@ from sqlalchemy import(
     Column, 
     Integer, 
     String,
+    Text,
     DateTime,
     Date,
     Float,
@@ -355,5 +356,179 @@ class PerformanceReview(Base):
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+
+# ==========================================================
+# MODULE 21: EMPLOYEE ONBOARDING SYSTEM
+# ==========================================================
+
+class Onboarding(Base):
+    __tablename__ = "onboarding"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True
+    )
+
+    task_name = Column(
+        String(200),
+        nullable=False
+    )
+
+    status = Column(
+        String(20),
+        nullable=False,
+        default="PENDING"
+    )  # PENDING / COMPLETED
+
+    due_date = Column(
+        Date,
+        nullable=False
+    )
+
+
+# ==========================================================
+# MODULE 22: RESIGNATION & EXIT MANAGEMENT
+# ==========================================================
+
+class Resignation(Base):
+    __tablename__ = "resignations"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        index=True,
+    )
+
+    reason = Column(Text, nullable=False)
+
+    notice_period = Column(Integer, nullable=False)
+
+    status = Column(
+        String,
+        default="PENDING",
+        nullable=False,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+
+    created_by = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    assigned_to = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False
+    )
+
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    due_date = Column(Date, nullable=False)
+
+    status = Column(
+        String(20),
+        default="PENDING",
+        nullable=False
+    )
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False
+    )
+    message = Column(Text, nullable=False)
+    rating = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ==========================================================
+# MODULE 27: NOTIFICATION PREFERENCES
+# ==========================================================
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        unique=True,
+        nullable=False,
+        index=True
+    )
+
+    attendance_alerts = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    leave_updates = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    announcements = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    task_updates = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
